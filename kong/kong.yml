@@ -16,10 +16,12 @@ services:
           hour: 1000
           policy: local
           redis:
-            host: null
+            host: localhost
             port: 6379
             timeout: 2000
             database: 0
+            ssl: false
+            ssl_verify: false
       - name: correlation-id
         config:
           header_name: X-Correlation-ID
