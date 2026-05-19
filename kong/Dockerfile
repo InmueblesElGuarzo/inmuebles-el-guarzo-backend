@@ -1,4 +1,4 @@
-FROM kong/kong-gateway:3.9
+FROM kong:3.9
 
 USER root
 COPY kong.yml /etc/kong/kong.yml
