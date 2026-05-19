@@ -15,6 +15,11 @@ services:
           minute: 60
           hour: 1000
           policy: local
+          redis:
+            host: null
+            port: 6379
+            timeout: 2000
+            database: 0
       - name: correlation-id
         config:
           header_name: X-Correlation-ID
