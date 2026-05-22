@@ -60,11 +60,15 @@ export class ListPublicationRequestsInteractor implements ListPublicationRequest
       referenceNumber: request.referenceNumber.value,
       ownerFullName: request.ownerFullName.value,
       ownerEmail: request.ownerEmail.value,
+      ownerPhonePrimary: request.ownerPhonePrimary.value,
+      proposedOfferType: request.proposedOfferType.value,
+      proposedLocation: request.proposedLocation.value,
       status: request.status.value,
       assignedAdvisorId: request.assignedAdvisorId.isPresent()
         ? request.assignedAdvisorId.value.value
         : undefined,
       createdAt: request.createdAt,
+      decidedAt: request.decisionAt.isPresent() ? request.decisionAt.value : undefined,
     };
   }
 }

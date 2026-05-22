@@ -8,8 +8,12 @@ export interface PublicationRequestSummaryHttpResponse {
   referenceNumber: string;
   ownerFullName: string;
   ownerEmail: string;
+  ownerPhonePrimary: string;
+  proposedOfferType: string;
+  proposedLocation: string;
   status: string;
   assignedAdvisorId: string | null;
+  decidedAt: string | null;
   createdAt: string;
 }
 
@@ -36,8 +40,12 @@ export class ListPublicationRequestsPresenter {
       referenceNumber: item.referenceNumber,
       ownerFullName: item.ownerFullName,
       ownerEmail: item.ownerEmail,
+      ownerPhonePrimary: item.ownerPhonePrimary,
+      proposedOfferType: item.proposedOfferType,
+      proposedLocation: item.proposedLocation,
       status: item.status,
       assignedAdvisorId: item.assignedAdvisorId ?? null,
+      decidedAt: item.decidedAt?.toISOString() ?? null,
       createdAt: item.createdAt.toISOString(),
     };
   }

@@ -12,9 +12,13 @@ export interface PublicationRequestSummary {
   referenceNumber: string;
   ownerFullName: string;
   ownerEmail: string;
+  ownerPhonePrimary: string;
+  proposedOfferType: string;
+  proposedLocation: string;
   status: string;
   assignedAdvisorId: string | undefined;
   createdAt: Date;
+  decidedAt: Date | undefined;
 }
 
 export interface ListPublicationRequestsOutput {
