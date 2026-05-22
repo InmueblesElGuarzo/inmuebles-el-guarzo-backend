@@ -21,7 +21,7 @@ import { DomainEvent } from '../../domain/domain-event.base';
 import { TransactionContext } from './event-handler.port';
 
 export interface EventBus {
-  publish(events: readonly DomainEvent[], tx: TransactionContext): Promise<void>;
+  publish(events: readonly DomainEvent[], tx?: TransactionContext): Promise<void>;
 }
 
 /**

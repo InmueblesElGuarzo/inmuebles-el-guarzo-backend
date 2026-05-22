@@ -53,12 +53,19 @@ export class InMemoryEventBus implements EventBus {
    * handlers restantes ni los eventos posteriores. Esto garantiza que
    * la transacción que envuelve este publish() se revierta entera.
    */
-  public async publish(events: readonly DomainEvent[], tx: TransactionContext): Promise<void> {
+  public async publish(events: readonly DomainEvent[], tx?: TransactionContext): Promise<void> {
     for (const event of events) {
       const handlers = this.handlersByEventName.get(event.eventName) ?? [];
 
       if (handlers.length === 0) {
         this.logger.debug(`Evento "${event.eventName}" sin handlers suscritos.`);
+        continue;
+      }
+
+      if (tx === undefined) {
+        this.logger.warn(
+          `Evento "${event.eventName}" publicado sin transaccion; handlers omitidos.`,
+        );
         continue;
       }
 
