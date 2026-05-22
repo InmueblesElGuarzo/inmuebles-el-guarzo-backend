@@ -1,14 +1,4 @@
-/**
- * InvalidFullNameException — Lanzada cuando se intenta construir un
- * FullName que no cumple las reglas del dominio.
- *
- * → CAPA: Entities (Uncle Bob)
- */
-
-import {
-  DomainErrorType,
-  DomainException,
-} from '../../../../shared-kernel/domain/exceptions/domain.exception';
+import { DomainErrorType, DomainException } from './domain.exception';
 
 export class InvalidFullNameException extends DomainException {
   public readonly type = DomainErrorType.VALIDATION;

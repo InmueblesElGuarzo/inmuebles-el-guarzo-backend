@@ -37,7 +37,7 @@ import {
   IdentityProviderPort,
 } from '../../../application/ports/output/identity-provider.port';
 import { InvalidAuthTokenException } from '../../../domain/exceptions/invalid-auth-token.exception';
-import { Email } from '../../../domain/value-objects/email.value-object';
+import { Email } from '../../../../../shared-kernel/domain/value-objects/email.value-object';
 
 @Injectable()
 export class SupabaseAuthAdapter implements IdentityProviderPort {

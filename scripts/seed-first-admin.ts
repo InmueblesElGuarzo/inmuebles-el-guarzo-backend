@@ -25,8 +25,8 @@ import { PrismaClient } from '@prisma/client';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import WebSocket from 'ws';
 
-import { Email } from '../src/modules/iam/domain/value-objects/email.value-object';
-import { FullName } from '../src/modules/iam/domain/value-objects/full-name.value-object';
+import { Email } from '../src/shared-kernel/domain/value-objects/email.value-object';
+import { FullName } from '../src/shared-kernel/domain/value-objects/full-name.value-object';
 import { UserRole } from '../src/modules/iam/domain/value-objects/user-role.value-object';
 
 interface SeedConfig {

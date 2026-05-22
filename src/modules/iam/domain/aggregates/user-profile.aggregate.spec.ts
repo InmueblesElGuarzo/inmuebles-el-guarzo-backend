@@ -3,8 +3,8 @@ import { UniqueId } from '../../../../shared-kernel/domain/unique-id.value-objec
 import { UserLoggedIn } from '../events/user-logged-in.event';
 import { UserProfileCreated } from '../events/user-profile-created.event';
 import { InactiveUserCannotLoginException } from '../exceptions/inactive-user-cannot-login.exception';
-import { Email } from '../value-objects/email.value-object';
-import { FullName } from '../value-objects/full-name.value-object';
+import { Email } from '../../../../shared-kernel/domain/value-objects/email.value-object';
+import { FullName } from '../../../../shared-kernel/domain/value-objects/full-name.value-object';
 import { UserRole } from '../value-objects/user-role.value-object';
 import { UserProfile } from './user-profile.aggregate';
 

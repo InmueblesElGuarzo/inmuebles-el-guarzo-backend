@@ -15,8 +15,8 @@ import type { Prisma, UserProfile as UserProfilePrismaModel } from '@prisma/clie
 import { Maybe } from '../../../../../../shared-kernel/domain/maybe';
 import { UniqueId } from '../../../../../../shared-kernel/domain/unique-id.value-object';
 import { UserProfile } from '../../../../domain/aggregates/user-profile.aggregate';
-import { Email } from '../../../../domain/value-objects/email.value-object';
-import { FullName } from '../../../../domain/value-objects/full-name.value-object';
+import { Email } from '../../../../../../shared-kernel/domain/value-objects/email.value-object';
+import { FullName } from '../../../../../../shared-kernel/domain/value-objects/full-name.value-object';
 import { UserRole } from '../../../../domain/value-objects/user-role.value-object';
 
 export class UserProfileMapper {
