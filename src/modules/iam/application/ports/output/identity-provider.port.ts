@@ -31,6 +31,7 @@ import { Email } from '../../../../../shared-kernel/domain/value-objects/email.v
 export interface AuthenticatedUser {
   id: UniqueId;
   email: Email;
+  role: string;
 }
 
 export interface IdentityProviderPort {
