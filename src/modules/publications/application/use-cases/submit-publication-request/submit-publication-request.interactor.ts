@@ -14,7 +14,7 @@
  * → CAPA: Use Cases (Uncle Bob)
  */
 
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 
@@ -35,9 +35,9 @@ import {
   PublicationRequest,
 } from '../../../domain/aggregates/publication-request.aggregate';
 import { DuplicatePublicationRequestException } from '../../../domain/exceptions/duplicate-publication-request.exception';
-import { PublicationRequestOfferType } from '../../../domain/value-objects/publication-request-offer-type.value-object';
 import { ProposedDescription } from '../../../domain/value-objects/proposed-description.value-object';
 import { ProposedLocation } from '../../../domain/value-objects/proposed-location.value-object';
+import { PublicationRequestOfferType } from '../../../domain/value-objects/publication-request-offer-type.value-object';
 import { ReferenceNumber } from '../../../domain/value-objects/reference-number.value-object';
 import {
   PUBLICATION_REQUEST_REPOSITORY,
