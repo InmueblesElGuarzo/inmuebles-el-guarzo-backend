@@ -6,6 +6,8 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
+  Max,
   MaxLength,
   Min,
   MinLength,
@@ -23,16 +25,19 @@ export class SubmitPublicationRequestHttpDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
+  @Matches(/^[+\d\s\-()]+$/)
   public ownerPhonePrimary!: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(50)
+  @Matches(/^[+\d\s\-()]+$/)
   public ownerPhoneSecondary?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(20)
+  @IsIn(['CC', 'CE', 'TI', 'PP', 'NIT', 'RUT', 'cc', 'ce', 'ti', 'pp', 'nit', 'rut'])
   public ownerDocumentType?: string;
 
   @IsOptional()
@@ -55,6 +60,7 @@ export class SubmitPublicationRequestHttpDto {
   @IsOptional()
   @IsNumber()
   @Min(1)
+  @Max(100000)
   public proposedAreaM2?: number;
 
   @IsString()
@@ -63,7 +69,8 @@ export class SubmitPublicationRequestHttpDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(0)
+  @Min(300000)
+  @Max(50000000000)
   public proposedExpectedPrice?: number;
 
   @IsString()

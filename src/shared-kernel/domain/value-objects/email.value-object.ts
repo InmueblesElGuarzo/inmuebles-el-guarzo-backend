@@ -27,6 +27,9 @@ export class Email {
   private static readonly EMAIL_REGEX =
     /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
+  // TLD debe tener entre 2 y 6 letras solamente (com, co, net, org, edu, etc.)
+  private static readonly TLD_REGEX = /\.[a-z]{2,6}$/;
+
   private static readonly MAX_LENGTH = 180;
 
   private readonly _value: string;
@@ -42,6 +45,9 @@ export class Email {
       throw new InvalidEmailFormatException(rawValue);
     }
     if (!Email.EMAIL_REGEX.test(normalized)) {
+      throw new InvalidEmailFormatException(rawValue);
+    }
+    if (!Email.TLD_REGEX.test(normalized)) {
       throw new InvalidEmailFormatException(rawValue);
     }
 
