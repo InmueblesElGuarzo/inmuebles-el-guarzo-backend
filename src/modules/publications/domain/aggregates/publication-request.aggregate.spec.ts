@@ -6,6 +6,7 @@ import { PhoneNumber } from '../../../../shared-kernel/domain/value-objects/phon
 import { PublicationRequestApproved } from '../events/publication-request-approved.event';
 import { PublicationRequestRejected } from '../events/publication-request-rejected.event';
 import { PublicationRequestSubmitted } from '../events/publication-request-submitted.event';
+import { PublicationRequestUnderReview } from '../events/publication-request-under-review.event';
 import { DecisionMotiveRequiredException } from '../exceptions/decision-motive-required.exception';
 import { PublicationRequestAlreadyDecidedException } from '../exceptions/publication-request-already-decided.exception';
 import {
@@ -23,6 +24,7 @@ import { CreatePublicationRequestInput, PublicationRequest } from './publication
 
 const TEST_UUID = '550e8400-e29b-41d4-a716-446655440000';
 const ADMIN_UUID = '550e8400-e29b-41d4-a716-446655440001';
+const ADVISOR_UUID = '550e8400-e29b-41d4-a716-446655440002';
 
 const buildInput = (): CreatePublicationRequestInput => ({
   id: UniqueId.fromString(TEST_UUID),
@@ -152,6 +154,112 @@ describe('PublicationRequest.reject — solicitud ya decidida', () => {
       buildDecidedProps(PublicationRequestStatusValue.REJECTED),
     );
     expect(() => request.reject(UniqueId.fromString(ADMIN_UUID), 'Nuevo motivo')).toThrow(
+      PublicationRequestAlreadyDecidedException,
+    );
+  });
+});
+
+const buildFullProps = (): Props => ({
+  ...buildInput(),
+  ownerPhoneSecondary: Maybe.some(PhoneNumber.create('3007654321')),
+  ownerDocumentType: Maybe.some('CC'),
+  ownerDocumentNumber: Maybe.some('12345678'),
+  proposedPropertyTypeId: Maybe.some(UniqueId.fromString(ADVISOR_UUID)),
+  proposedAreaM2: Maybe.some(85),
+  proposedExpectedPrice: Maybe.some(350000000),
+  status: PublicationRequestStatus.create(PublicationRequestStatusValue.PENDING_REVIEW),
+  assignedAdvisorId: Maybe.some(UniqueId.fromString(ADVISOR_UUID)),
+  decisionAt: Maybe.some(new Date('2026-01-02T00:00:00.000Z')),
+  decisionByAdminId: Maybe.some(UniqueId.fromString(ADMIN_UUID)),
+  decisionMotive: Maybe.some('Motivo de prueba'),
+  submittedFromIp: Maybe.some('test-submitted-ip'),
+  submittedFromUserAgent: Maybe.some('Mozilla/5.0'),
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+});
+
+describe('PublicationRequest — getters opcionales presentes', () => {
+  it('should expose ownerPhoneSecondary when present', () => {
+    const req = PublicationRequest.fromPersistence(buildFullProps());
+    expect(req.ownerPhoneSecondary.isPresent()).toBe(true);
+    expect(req.ownerPhoneSecondary.value.value).toBe('3007654321');
+  });
+
+  it('should expose ownerDocumentType and ownerDocumentNumber when present', () => {
+    const req = PublicationRequest.fromPersistence(buildFullProps());
+    expect(req.ownerDocumentType.isPresent()).toBe(true);
+    expect(req.ownerDocumentType.value).toBe('CC');
+    expect(req.ownerDocumentNumber.isPresent()).toBe(true);
+    expect(req.ownerDocumentNumber.value).toBe('12345678');
+  });
+
+  it('should expose proposedPropertyTypeId, proposedAreaM2 and proposedExpectedPrice when present', () => {
+    const req = PublicationRequest.fromPersistence(buildFullProps());
+    expect(req.proposedPropertyTypeId.isPresent()).toBe(true);
+    expect(req.proposedPropertyTypeId.value.value).toBe(ADVISOR_UUID);
+    expect(req.proposedAreaM2.isPresent()).toBe(true);
+    expect(req.proposedAreaM2.value).toBe(85);
+    expect(req.proposedExpectedPrice.isPresent()).toBe(true);
+    expect(req.proposedExpectedPrice.value).toBe(350000000);
+  });
+
+  it('should expose assignedAdvisorId, decisionAt, decisionByAdminId and decisionMotive when present', () => {
+    const req = PublicationRequest.fromPersistence(buildFullProps());
+    expect(req.assignedAdvisorId.isPresent()).toBe(true);
+    expect(req.assignedAdvisorId.value.value).toBe(ADVISOR_UUID);
+    expect(req.decisionAt.isPresent()).toBe(true);
+    expect(req.decisionAt.value).toBeInstanceOf(Date);
+    expect(req.decisionByAdminId.isPresent()).toBe(true);
+    expect(req.decisionByAdminId.value.value).toBe(ADMIN_UUID);
+    expect(req.decisionMotive.isPresent()).toBe(true);
+    expect(req.decisionMotive.value).toBe('Motivo de prueba');
+  });
+
+  it('should expose submittedFromIp and submittedFromUserAgent when present', () => {
+    const req = PublicationRequest.fromPersistence(buildFullProps());
+    expect(req.submittedFromIp.isPresent()).toBe(true);
+    expect(req.submittedFromIp.value).toBe('test-submitted-ip');
+    expect(req.submittedFromUserAgent.isPresent()).toBe(true);
+    expect(req.submittedFromUserAgent.value).toBe('Mozilla/5.0');
+  });
+});
+
+describe('PublicationRequest — getters escalares', () => {
+  it('should expose captchaValidated as true and correct dedupHash', () => {
+    const req = PublicationRequest.submit(buildInput());
+    expect(req.captchaValidated).toBe(true);
+    expect(req.dedupHash).toBe('abc123hash');
+  });
+});
+
+describe('PublicationRequest.startReview — flujo feliz', () => {
+  it('should transition status to UNDER_REVIEW', () => {
+    const req = PublicationRequest.fromPersistence({
+      ...buildUnderReviewProps(),
+      status: PublicationRequestStatus.create(PublicationRequestStatusValue.PENDING_REVIEW),
+    });
+    req.startReview(UniqueId.fromString(ADMIN_UUID));
+    expect(req.status.value).toBe(PublicationRequestStatusValue.UNDER_REVIEW);
+  });
+
+  it('should emit exactly one PublicationRequestUnderReview event', () => {
+    const req = PublicationRequest.fromPersistence({
+      ...buildUnderReviewProps(),
+      status: PublicationRequestStatus.create(PublicationRequestStatusValue.PENDING_REVIEW),
+    });
+    req.startReview(UniqueId.fromString(ADMIN_UUID));
+    const events = req.peekDomainEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0]).toBeInstanceOf(PublicationRequestUnderReview);
+  });
+});
+
+describe('PublicationRequest.startReview — solicitud en estado terminal', () => {
+  it('should throw PublicationRequestAlreadyDecidedException when already decided', () => {
+    const req = PublicationRequest.fromPersistence(
+      buildDecidedProps(PublicationRequestStatusValue.APPROVED),
+    );
+    expect(() => req.startReview(UniqueId.fromString(ADMIN_UUID))).toThrow(
       PublicationRequestAlreadyDecidedException,
     );
   });
