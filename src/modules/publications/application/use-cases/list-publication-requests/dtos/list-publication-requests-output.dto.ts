@@ -1,0 +1,29 @@
+/**
+ * ListPublicationRequestsOutput — Respuesta paginada de solicitudes.
+ *
+ * PublicationRequestSummary es el snapshot minimo para listas/tablas.
+ * Tipo plano listo para JSON.
+ *
+ * → CAPA: Use Cases (Uncle Bob)
+ */
+
+export interface PublicationRequestSummary {
+  id: string;
+  referenceNumber: string;
+  ownerFullName: string;
+  ownerEmail: string;
+  ownerPhonePrimary: string;
+  proposedOfferType: string;
+  proposedLocation: string;
+  status: string;
+  assignedAdvisorId: string | undefined;
+  createdAt: Date;
+  decidedAt: Date | undefined;
+}
+
+export interface ListPublicationRequestsOutput {
+  items: PublicationRequestSummary[];
+  total: number;
+  page: number;
+  limit: number;
+}

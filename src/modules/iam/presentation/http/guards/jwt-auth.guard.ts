@@ -6,10 +6,11 @@
  *   1. Si la ruta tiene @Public(), bypassa.
  *   2. Extrae el token del header Authorization: Bearer <token>.
  *   3. Lo verifica vía IdentityProviderPort (SupabaseAuthAdapter).
- *   4. Adjunta el AuthenticatedUser al request (lo lee @CurrentUser).
+ *   4. Consulta UserProfileRepositoryPort para obtener el rol real de BD.
+ *   5. Adjunta el AuthenticatedUser (con rol de BD) al request.
  *
- * Las fallas (token ausente, mal formado, invalido, expirado) lanzan
- * InvalidAuthTokenException, que el DomainExceptionFilter traduce a 401.
+ * Las fallas (token ausente, mal formado, invalido, expirado, perfil
+ * inexistente) lanzan InvalidAuthTokenException → HTTP 401.
  *
  * → CAPA: Interface Adapters (Uncle Bob)
  */
@@ -24,6 +25,10 @@ import {
   IDENTITY_PROVIDER,
   IdentityProviderPort,
 } from '../../../application/ports/output/identity-provider.port';
+import {
+  USER_PROFILE_REPOSITORY,
+  UserProfileRepositoryPort,
+} from '../../../application/ports/output/user-profile.repository.port';
 import { InvalidAuthTokenException } from '../../../domain/exceptions/invalid-auth-token.exception';
 
 interface AuthenticatedRequest extends Request {
@@ -36,6 +41,8 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     @Inject(IDENTITY_PROVIDER)
     private readonly identityProvider: IdentityProviderPort,
+    @Inject(USER_PROFILE_REPOSITORY)
+    private readonly userProfileRepository: UserProfileRepositoryPort,
   ) {}
 
   public async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -55,8 +62,19 @@ export class JwtAuthGuard implements CanActivate {
       throw new InvalidAuthTokenException('missing or malformed Authorization header');
     }
 
-    const user = await this.identityProvider.verifyToken(token);
-    request.authenticatedUser = user;
+    const jwtUser = await this.identityProvider.verifyToken(token);
+    const profileMaybe = await this.userProfileRepository.findById(jwtUser.id);
+
+    if (profileMaybe.isAbsent()) {
+      throw new InvalidAuthTokenException('user profile not found');
+    }
+
+    request.authenticatedUser = {
+      id: jwtUser.id,
+      email: jwtUser.email,
+      role: profileMaybe.value.role.value,
+    };
+
     return true;
   }
 

@@ -70,4 +70,9 @@ export class EnvSchema {
   @IsOptional()
   @IsString()
   BETTERSTACK_SOURCE_TOKEN?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  RESEND_API_KEY?: string;
 }

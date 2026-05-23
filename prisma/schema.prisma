@@ -628,7 +628,7 @@ model PublicationRequest {
   decisionMotive    String?   @map("decision_motive")
 
   // Trazabilidad de seguridad
-  captchaToken           String  @map("captcha_token") @db.VarChar(2048)
+  captchaValidated       Boolean @default(false) @map("captcha_validated")
   submittedFromIp        String? @map("submitted_from_ip") @db.VarChar(45)
   submittedFromUserAgent String? @map("submitted_from_user_agent") @db.VarChar(500)
 

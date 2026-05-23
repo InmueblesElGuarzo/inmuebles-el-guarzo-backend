@@ -37,7 +37,7 @@ import {
   IdentityProviderPort,
 } from '../../../application/ports/output/identity-provider.port';
 import { InvalidAuthTokenException } from '../../../domain/exceptions/invalid-auth-token.exception';
-import { Email } from '../../../domain/value-objects/email.value-object';
+import { Email } from '../../../../../shared-kernel/domain/value-objects/email.value-object';
 
 @Injectable()
 export class SupabaseAuthAdapter implements IdentityProviderPort {
@@ -65,7 +65,8 @@ export class SupabaseAuthAdapter implements IdentityProviderPort {
     const payload = await this.verifyAndExtractPayload(rawJwt);
     const id = SupabaseAuthAdapter.extractSub(payload);
     const email = SupabaseAuthAdapter.extractEmail(payload);
-    return { id, email };
+    const role = SupabaseAuthAdapter.extractRole(payload);
+    return { id, email, role };
   }
 
   private async verifyAndExtractPayload(rawJwt: string): Promise<jose.JWTPayload> {
@@ -91,6 +92,15 @@ export class SupabaseAuthAdapter implements IdentityProviderPort {
     } catch {
       throw new InvalidAuthTokenException(`sub claim is not a valid UUID: "${payload.sub}"`);
     }
+  }
+
+  private static extractRole(payload: jose.JWTPayload): string {
+    const appMeta: unknown = payload['app_metadata'];
+    if (typeof appMeta !== 'object' || appMeta === null || !('role' in appMeta)) {
+      return 'USER';
+    }
+    const { role } = appMeta as Record<string, unknown>;
+    return typeof role === 'string' && role.length > 0 ? role : 'USER';
   }
 
   private static extractEmail(payload: jose.JWTPayload): Email {
