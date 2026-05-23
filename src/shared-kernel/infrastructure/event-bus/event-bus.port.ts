@@ -18,10 +18,11 @@
 
 import { DomainEvent } from '../../domain/domain-event.base';
 
-import { TransactionContext } from './event-handler.port';
+import { EventHandler, TransactionContext } from './event-handler.port';
 
 export interface EventBus {
   publish(events: readonly DomainEvent[], tx?: TransactionContext): Promise<void>;
+  register(eventName: string, handler: EventHandler): void;
 }
 
 /**

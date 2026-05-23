@@ -33,5 +33,5 @@ import { DomainEvent } from '../../domain/domain-event.base';
 export type TransactionContext = Prisma.TransactionClient;
 
 export interface EventHandler<TEvent extends DomainEvent = DomainEvent> {
-  handle(event: TEvent, tx: TransactionContext): Promise<void>;
+  handle(event: TEvent, tx?: TransactionContext): Promise<void>;
 }

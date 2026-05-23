@@ -5,6 +5,7 @@ import { SentryGlobalFilter, SentryModule } from '@sentry/nestjs/setup';
 import { LoggerModule } from 'nestjs-pino';
 
 import { IamModule } from './modules/iam/iam.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PublicationsModule } from './modules/publications/publications.module';
 import { JwtAuthGuard } from './modules/iam/presentation/http/guards/jwt-auth.guard';
 import { validateEnv } from './shared-kernel/infrastructure/config/env.validator';
@@ -23,6 +24,7 @@ import { SharedKernelModule } from './shared-kernel/shared-kernel.module';
     SharedKernelModule,
     IamModule,
     PublicationsModule,
+    NotificationsModule,
   ],
   providers: [
     {
