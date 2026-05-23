@@ -99,8 +99,8 @@ describe('StartReviewPublicationRequestInteractor.execute — start-review exito
     const interactor = new StartReviewPublicationRequestInteractor(repo, eventBus);
     await interactor.execute(START_REVIEW_INPUT);
 
-    expect(repo.save).toHaveBeenCalledTimes(1);
-    expect(eventBus.publish).toHaveBeenCalledTimes(1);
+    expect(repo.save.mock.calls).toHaveLength(1);
+    expect(eventBus.publish.mock.calls).toHaveLength(1);
   });
 });
 

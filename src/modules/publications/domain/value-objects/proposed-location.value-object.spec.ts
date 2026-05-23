@@ -47,6 +47,6 @@ describe('ProposedLocation.equals', () => {
   });
 
   it('should return false when other is undefined', () => {
-    expect(ProposedLocation.create(VALID_LOCATION).equals(undefined)).toBe(false);
+    expect(ProposedLocation.create(VALID_LOCATION).equals()).toBe(false);
   });
 });

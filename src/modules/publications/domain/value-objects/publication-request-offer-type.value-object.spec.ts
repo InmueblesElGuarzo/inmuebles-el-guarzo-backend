@@ -60,6 +60,6 @@ describe('PublicationRequestOfferType.equals', () => {
   });
 
   it('should return false when other is undefined', () => {
-    expect(PublicationRequestOfferType.create('SALE').equals(undefined)).toBe(false);
+    expect(PublicationRequestOfferType.create('SALE').equals()).toBe(false);
   });
 });

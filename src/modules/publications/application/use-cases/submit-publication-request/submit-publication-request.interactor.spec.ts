@@ -101,8 +101,8 @@ describe('SubmitPublicationRequestInteractor.execute — submit exitoso', () => 
     const interactor = new SubmitPublicationRequestInteractor(repo, eventBus);
     await interactor.execute(VALID_INPUT);
 
-    expect(repo.save).toHaveBeenCalledTimes(1);
-    expect(eventBus.publish).toHaveBeenCalledTimes(1);
+    expect(repo.save.mock.calls).toHaveLength(1);
+    expect(eventBus.publish.mock.calls).toHaveLength(1);
   });
 });
 
@@ -127,8 +127,8 @@ describe('SubmitPublicationRequestInteractor.execute — dedupHash duplicado', (
     const interactor = new SubmitPublicationRequestInteractor(repo, eventBus);
     await interactor.execute(VALID_INPUT);
 
-    expect(repo.save).not.toHaveBeenCalled();
-    expect(eventBus.publish).not.toHaveBeenCalled();
+    expect(repo.save.mock.calls).toHaveLength(0);
+    expect(eventBus.publish.mock.calls).toHaveLength(0);
   });
 });
 
@@ -145,6 +145,6 @@ describe('SubmitPublicationRequestInteractor.execute — VOs construidos desde s
     const result = await interactor.execute({ ...VALID_INPUT, proposedOfferType: 'sale' });
 
     expect(result.isSuccess).toBe(true);
-    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(repo.save.mock.calls).toHaveLength(1);
   });
 });

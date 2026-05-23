@@ -4,13 +4,13 @@ import { Email } from '../../../../../shared-kernel/domain/value-objects/email.v
 import { FullName } from '../../../../../shared-kernel/domain/value-objects/full-name.value-object';
 import { PhoneNumber } from '../../../../../shared-kernel/domain/value-objects/phone-number.value-object';
 import { PublicationRequest } from '../../../domain/aggregates/publication-request.aggregate';
+import { ProposedDescription } from '../../../domain/value-objects/proposed-description.value-object';
+import { ProposedLocation } from '../../../domain/value-objects/proposed-location.value-object';
 import { PublicationRequestOfferType } from '../../../domain/value-objects/publication-request-offer-type.value-object';
 import {
   PublicationRequestStatus,
   PublicationRequestStatusValue,
 } from '../../../domain/value-objects/publication-request-status.value-object';
-import { ProposedDescription } from '../../../domain/value-objects/proposed-description.value-object';
-import { ProposedLocation } from '../../../domain/value-objects/proposed-location.value-object';
 import { ReferenceNumber } from '../../../domain/value-objects/reference-number.value-object';
 import { PublicationRequestRepositoryPort } from '../../ports/output/publication-request.repository.port';
 import { ListPublicationRequestsInteractor } from './list-publication-requests.interactor';
@@ -121,8 +121,6 @@ describe('ListPublicationRequestsInteractor.execute — defaults de paginación'
 
     expect(result.value.page).toBe(3);
     expect(result.value.limit).toBe(5);
-    expect(repo.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ page: 3, limit: 5 }),
-    );
+    expect(repo.findAll.mock.calls[0][0]).toMatchObject({ page: 3, limit: 5 });
   });
 });

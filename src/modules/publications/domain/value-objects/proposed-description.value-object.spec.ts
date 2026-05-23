@@ -55,6 +55,6 @@ describe('ProposedDescription.equals', () => {
   });
 
   it('should return false when other is undefined', () => {
-    expect(ProposedDescription.create(VALID_DESC).equals(undefined)).toBe(false);
+    expect(ProposedDescription.create(VALID_DESC).equals()).toBe(false);
   });
 });
