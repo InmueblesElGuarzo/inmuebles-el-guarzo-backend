@@ -23,7 +23,6 @@ export interface GetPublicationRequestDetailHttpResponse {
   captchaValidated: boolean;
   submittedFromIp: string | null;
   submittedFromUserAgent: string | null;
-  dedupHash: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -40,7 +39,6 @@ export class GetPublicationRequestDetailPresenter {
       status: output.status,
       ...GetPublicationRequestDetailPresenter.mapDecision(output),
       captchaValidated: output.captchaValidated,
-      dedupHash: output.dedupHash,
       createdAt: output.createdAt.toISOString(),
       updatedAt: output.updatedAt.toISOString(),
     };

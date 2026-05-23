@@ -20,6 +20,7 @@ import { PhoneNumber } from '../../../../shared-kernel/domain/value-objects/phon
 import { PublicationRequestApproved } from '../events/publication-request-approved.event';
 import { PublicationRequestRejected } from '../events/publication-request-rejected.event';
 import { PublicationRequestSubmitted } from '../events/publication-request-submitted.event';
+import { PublicationRequestUnderReview } from '../events/publication-request-under-review.event';
 import { DecisionMotiveRequiredException } from '../exceptions/decision-motive-required.exception';
 import { PublicationRequestAlreadyDecidedException } from '../exceptions/publication-request-already-decided.exception';
 import { ProposedDescription } from '../value-objects/proposed-description.value-object';
@@ -113,6 +114,24 @@ export class PublicationRequest extends AggregateRoot {
 
   public static fromPersistence(props: PublicationRequestProps): PublicationRequest {
     return new PublicationRequest(props);
+  }
+
+  public startReview(startedByAdminId: UniqueId): void {
+    if (this._props.status.isTerminal()) {
+      throw new PublicationRequestAlreadyDecidedException(this._props.id.value);
+    }
+    const now = new Date();
+    this._props.status = this._props.status.transitionTo(
+      PublicationRequestStatusValue.UNDER_REVIEW,
+    );
+    this._props.updatedAt = now;
+    this.addDomainEvent(
+      new PublicationRequestUnderReview(
+        this._props.id,
+        this._props.referenceNumber.value,
+        startedByAdminId.value,
+      ),
+    );
   }
 
   public approve(decidedByAdminId: UniqueId): void {

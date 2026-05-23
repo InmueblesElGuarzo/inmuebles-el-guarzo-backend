@@ -19,9 +19,9 @@ import {
 } from '@nestjs/swagger';
 import type { Request } from 'express';
 
+import { Public } from '../../../../../shared-kernel/presentation/decorators/public.decorator';
 import { AuthenticatedUser } from '../../../../iam/application/ports/output/identity-provider.port';
 import { CurrentUser } from '../../../../iam/presentation/http/decorators/current-user.decorator';
-import { Public } from '../../../../../shared-kernel/presentation/decorators/public.decorator';
 
 import {
   APPROVE_PUBLICATION_REQUEST_INPUT_PORT,
@@ -39,6 +39,10 @@ import {
   REJECT_PUBLICATION_REQUEST_INPUT_PORT,
   RejectPublicationRequestInputPort,
 } from '../../../application/use-cases/reject-publication-request/dtos/reject-publication-request.input-port';
+import {
+  START_REVIEW_PUBLICATION_REQUEST_INPUT_PORT,
+  StartReviewPublicationRequestInputPort,
+} from '../../../application/use-cases/start-review-publication-request/dtos/start-review-publication-request.input-port';
 import {
   SUBMIT_PUBLICATION_REQUEST_INPUT_PORT,
   SubmitPublicationRequestInputPort,
@@ -64,6 +68,10 @@ import {
   RejectPublicationRequestPresenter,
 } from '../presenters/reject-publication-request.presenter';
 import {
+  StartReviewPublicationRequestHttpResponse,
+  StartReviewPublicationRequestPresenter,
+} from '../presenters/start-review-publication-request.presenter';
+import {
   SubmitPublicationRequestHttpResponse,
   SubmitPublicationRequestPresenter,
 } from '../presenters/submit-publication-request.presenter';
@@ -71,6 +79,9 @@ import {
 @ApiTags('Publications')
 @Controller('publications')
 export class PublicationsController {
+  @Inject(START_REVIEW_PUBLICATION_REQUEST_INPUT_PORT)
+  private readonly startReviewInteractor!: StartReviewPublicationRequestInputPort;
+
   public constructor(
     @Inject(SUBMIT_PUBLICATION_REQUEST_INPUT_PORT)
     private readonly submitInteractor: SubmitPublicationRequestInputPort,
@@ -162,6 +173,28 @@ export class PublicationsController {
       throw result.error;
     }
     return ApprovePublicationRequestPresenter.toHttp(result.value);
+  }
+
+  @Post(':id/start-review')
+  @HttpCode(200)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Start review of a publication request (ADMIN)' })
+  @ApiOkResponse({ description: 'Publication request under review' })
+  public async startReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<StartReviewPublicationRequestHttpResponse> {
+    if (user.role !== 'ADMIN') {
+      throw new ForbiddenException();
+    }
+    const result = await this.startReviewInteractor.execute({
+      publicationRequestId: id,
+      startedByAdminId: user.id.value,
+    });
+    if (result.isFailure) {
+      throw result.error;
+    }
+    return StartReviewPublicationRequestPresenter.toHttp(result.value);
   }
 
   @Post(':id/reject')

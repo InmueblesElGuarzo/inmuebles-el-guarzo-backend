@@ -77,7 +77,6 @@ export class GetPublicationRequestDetailInteractor implements GetPublicationRequ
       captchaValidated: r.captchaValidated,
       submittedFromIp: opt(r.submittedFromIp),
       submittedFromUserAgent: opt(r.submittedFromUserAgent),
-      dedupHash: r.dedupHash,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
     };

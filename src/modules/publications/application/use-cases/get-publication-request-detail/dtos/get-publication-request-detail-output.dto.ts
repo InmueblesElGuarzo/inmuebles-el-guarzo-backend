@@ -30,7 +30,6 @@ export interface GetPublicationRequestDetailOutput {
   captchaValidated: boolean;
   submittedFromIp: string | undefined;
   submittedFromUserAgent: string | undefined;
-  dedupHash: string;
   createdAt: Date;
   updatedAt: Date;
 }
