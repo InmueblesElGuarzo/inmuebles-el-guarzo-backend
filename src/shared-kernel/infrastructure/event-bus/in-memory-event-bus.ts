@@ -3,13 +3,18 @@
  *
  * Mantiene un registro de handlers indexado por nombre de evento. Cuando
  * llega un publish(), busca todos los handlers suscritos al nombre del
- * evento y los ejecuta en serie, dentro de la transacción recibida.
+ * evento y los ejecuta en serie.
  *
  * Decisión clave: los handlers se ejecutan en SERIE, no en paralelo.
  * Razón: si dos handlers escriben en la misma fila, ejecutarlos en
  * paralelo dentro de una transacción de Postgres puede causar deadlocks.
- * La ganancia de paralelismo no compensa el riesgo, sobre tod cuando
+ * La ganancia de paralelismo no compensa el riesgo, especialmente cuando
  * el típico caso son 1 a 3 handlers por evento.
+ *
+ * Cuando tx === undefined, los handlers se ejecutan igualmente pasando
+ * undefined como tx. Cada handler decide internamente si necesita
+ * transacción activa; los que no la necesitan (e.g., envío de email)
+ * ignoran el parámetro.
  *
  * Si un handler falla, se propaga la excepción. La transacción que
  * llama a publish() se revierte automáticamente porque Prisma's
@@ -53,7 +58,7 @@ export class InMemoryEventBus implements EventBus {
    * handlers restantes ni los eventos posteriores. Esto garantiza que
    * la transacción que envuelve este publish() se revierta entera.
    */
-  public async publish(events: readonly DomainEvent[], tx: TransactionContext): Promise<void> {
+  public async publish(events: readonly DomainEvent[], tx?: TransactionContext): Promise<void> {
     for (const event of events) {
       const handlers = this.handlersByEventName.get(event.eventName) ?? [];
 

@@ -10,8 +10,7 @@
  * Si manana cambiamos de Prisma a TypeORM, o de Postgres a SQL Server,
  * o agregamos caching con Redis delante de la BD: solo cambia el
  * adapter. Este puerto y todos los interactors que lo consumen quedan
- * intactos. Eso es exactamente lo que el profesor te va a pedir
- * demostrar en la entrega final.
+ * intactos.
  *
  * Decision sobre transacciones: el parametro `tx` es opcional. Cuando
  * se pasa, el adapter ejecuta usando esa TransactionContext (compartida

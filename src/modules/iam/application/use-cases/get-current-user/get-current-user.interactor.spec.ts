@@ -3,8 +3,8 @@ import { UniqueId } from '../../../../../shared-kernel/domain/unique-id.value-ob
 import { UserProfileRepositoryPort } from '../../../application/ports/output/user-profile.repository.port';
 import { UserProfile } from '../../../domain/aggregates/user-profile.aggregate';
 import { UserProfileNotProvisionedException } from '../../../domain/exceptions/user-profile-not-provisioned.exception';
-import { Email } from '../../../domain/value-objects/email.value-object';
-import { FullName } from '../../../domain/value-objects/full-name.value-object';
+import { Email } from '../../../../../shared-kernel/domain/value-objects/email.value-object';
+import { FullName } from '../../../../../shared-kernel/domain/value-objects/full-name.value-object';
 import { UserRole } from '../../../domain/value-objects/user-role.value-object';
 import { GetCurrentUserInteractor } from './get-current-user.interactor';
 

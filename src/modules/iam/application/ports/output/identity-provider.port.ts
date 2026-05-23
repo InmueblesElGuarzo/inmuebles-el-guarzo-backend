@@ -18,7 +18,7 @@
 
 import { UniqueId } from '../../../../../shared-kernel/domain/unique-id.value-object';
 
-import { Email } from '../../../domain/value-objects/email.value-object';
+import { Email } from '../../../../../shared-kernel/domain/value-objects/email.value-object';
 
 /**
  * Datos minimos que el IdP retorna sobre un usuario autenticado.
@@ -31,6 +31,7 @@ import { Email } from '../../../domain/value-objects/email.value-object';
 export interface AuthenticatedUser {
   id: UniqueId;
   email: Email;
+  role: string;
 }
 
 export interface IdentityProviderPort {
