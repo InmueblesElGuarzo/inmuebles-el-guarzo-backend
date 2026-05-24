@@ -44,6 +44,10 @@ export class EnvSchema {
   @IsNotEmpty()
   SUPABASE_ANON_KEY!: string;
 
+  @IsString()
+  @IsNotEmpty()
+  TURNSTILE_SECRET_KEY!: string;
+
   // Service role key. ESTA SI es secreta y otorga privilegios totales
   // sobre el proyecto de Supabase. NUNCA debe llegar al frontend ni a
   // logs. En este hito el backend no la usa, pero la dejamos validada

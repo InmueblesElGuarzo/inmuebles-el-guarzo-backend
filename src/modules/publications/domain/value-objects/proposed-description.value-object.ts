@@ -3,10 +3,10 @@
  * del inmueble en la solicitud de publicación.
  *
  * Reglas:
- *   - No puede estar vacía
- *   - Mínimo 20 caracteres para garantizar información útil
- *   - Sin límite explícito de longitud (texto largo es válido)
- *   - Se normaliza con trim
+ * - No puede estar vacía
+ * - Mínimo 20 caracteres para garantizar información útil
+ * - Máximo 2000 caracteres para evitar textos excesivos
+ * - Se normaliza con trim
  *
  * → CAPA: Entities (Uncle Bob)
  */
@@ -15,6 +15,7 @@ import { InvalidProposedDescriptionException } from '../exceptions/invalid-propo
 
 export class ProposedDescription {
   private static readonly MIN_LENGTH = 20;
+  private static readonly MAX_LENGTH = 2000; // ← Nueva regla
   private readonly _value: string;
 
   private constructor(value: string) {
@@ -23,9 +24,13 @@ export class ProposedDescription {
 
   public static create(raw: string): ProposedDescription {
     const normalized = raw.trim();
-    if (normalized.length < ProposedDescription.MIN_LENGTH) {
+    const length = normalized.length;
+
+    // Validación de rango (Mínimo y Máximo)
+    if (length < ProposedDescription.MIN_LENGTH || length > ProposedDescription.MAX_LENGTH) {
       throw new InvalidProposedDescriptionException(raw);
     }
+
     return new ProposedDescription(normalized);
   }
 
