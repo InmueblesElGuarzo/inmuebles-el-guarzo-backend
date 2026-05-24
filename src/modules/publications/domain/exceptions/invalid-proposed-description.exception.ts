@@ -8,8 +8,15 @@ export class InvalidProposedDescriptionException extends DomainException {
   public readonly code = 'PUBLICATIONS.INVALID_PROPOSED_DESCRIPTION';
 
   constructor(value: string) {
-    super(
-      `Proposed description is too short. Minimum 20 characters required, got "${value.length}".`,
-    );
+    const currentLength = value.trim().length;
+    let message = '';
+
+    if (currentLength < 20) {
+      message = `Proposed description is too short. Minimum 20 characters required, got ${currentLength}.`;
+    } else {
+      message = `Proposed description is too long. Maximum 2000 characters allowed, got ${currentLength}.`;
+    }
+
+    super(message);
   }
 }
