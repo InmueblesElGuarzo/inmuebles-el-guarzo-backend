@@ -2,14 +2,16 @@
  * SubmitPublicationRequestInteractor — Implementacion del caso de uso SubmitPublicationRequest.
  *
  * Flujo:
- *   1. Calcular dedupHash (SHA-256 de email + location + offerType).
- *   2. Verificar que no exista una solicitud con ese hash (anti-spam).
- *   3. Obtener el siguiente numero de referencia para el año en curso.
- *   4. Construir los VOs y llamar a PublicationRequest.submit().
- *   5. Persistir y publicar eventos de dominio.
+ *   1. Verificar token CAPTCHA contra Cloudflare Turnstile.
+ *   2. Calcular dedupHash (SHA-256 de email + location + offerType).
+ *   3. Verificar que no exista una solicitud con ese hash (anti-spam).
+ *   4. Obtener el siguiente numero de referencia para el año en curso.
+ *   5. Construir los VOs y llamar a PublicationRequest.submit().
+ *   6. Persistir y publicar eventos de dominio.
  *
  * Errores de dominio que retorna en Result.fail:
  *   - DuplicatePublicationRequestException: solicitud duplicada detectada.
+ *   - InvalidCaptchaException: token CAPTCHA inválido o expirado.
  *
  * → CAPA: Use Cases (Uncle Bob)
  */
@@ -35,10 +37,12 @@ import {
   PublicationRequest,
 } from '../../../domain/aggregates/publication-request.aggregate';
 import { DuplicatePublicationRequestException } from '../../../domain/exceptions/duplicate-publication-request.exception';
+import { InvalidCaptchaException } from '../../../domain/exceptions/invalid-captcha.exception';
 import { ProposedDescription } from '../../../domain/value-objects/proposed-description.value-object';
 import { ProposedLocation } from '../../../domain/value-objects/proposed-location.value-object';
 import { PublicationRequestOfferType } from '../../../domain/value-objects/publication-request-offer-type.value-object';
 import { ReferenceNumber } from '../../../domain/value-objects/reference-number.value-object';
+import { CAPTCHA_VERIFIER, CaptchaVerifierPort } from '../../ports/output/captcha-verifier.port';
 import {
   PUBLICATION_REQUEST_REPOSITORY,
   PublicationRequestRepositoryPort,
@@ -55,11 +59,20 @@ export class SubmitPublicationRequestInteractor implements SubmitPublicationRequ
     private readonly repo: PublicationRequestRepositoryPort,
     @Inject(EVENT_BUS)
     private readonly eventBus: EventBus,
+    @Inject(CAPTCHA_VERIFIER)
+    private readonly captchaVerifier: CaptchaVerifierPort,
   ) {}
 
   public async execute(
     input: SubmitPublicationRequestInput,
   ): Promise<Result<SubmitPublicationRequestOutput, DomainException>> {
+    // Paso 1 — verificar CAPTCHA
+    const captchaValid = await this.captchaVerifier.verify(input.captchaToken);
+    if (!captchaValid) {
+      return Result.fail(new InvalidCaptchaException());
+    }
+
+    // Paso 2 — deduplicación
     const dedupHash = SubmitPublicationRequestInteractor.buildDedupHash(
       input.ownerEmail,
       input.proposedLocation,
@@ -69,8 +82,12 @@ export class SubmitPublicationRequestInteractor implements SubmitPublicationRequ
     if (existing.isPresent()) {
       return Result.fail(new DuplicatePublicationRequestException(dedupHash));
     }
+
+    // Paso 3 — número de referencia
     const year = new Date().getFullYear();
     const sequence = await this.repo.nextReferenceNumber(year);
+
+    // Paso 4 — crear agregado y persistir
     const createInput = SubmitPublicationRequestInteractor.buildCreateInput(
       input,
       year,
@@ -81,6 +98,7 @@ export class SubmitPublicationRequestInteractor implements SubmitPublicationRequ
     await this.repo.save(request);
     const events = request.pullDomainEvents();
     await this.eventBus.publish(events);
+
     return Result.ok(SubmitPublicationRequestInteractor.toOutput(request));
   }
 
@@ -113,7 +131,7 @@ export class SubmitPublicationRequestInteractor implements SubmitPublicationRequ
       proposedAreaM2: Maybe.fromNullable(input.proposedAreaM2),
       proposedDescription: ProposedDescription.create(input.proposedDescription),
       proposedExpectedPrice: Maybe.fromNullable(input.proposedExpectedPrice),
-      captchaValidated: input.captchaToken.length > 0,
+      captchaValidated: true,
       submittedFromIp: Maybe.fromNullable(input.submittedFromIp),
       submittedFromUserAgent: Maybe.fromNullable(input.submittedFromUserAgent),
       dedupHash,
