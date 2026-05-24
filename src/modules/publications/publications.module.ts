@@ -15,6 +15,8 @@ import { SUBMIT_PUBLICATION_REQUEST_INPUT_PORT } from './application/use-cases/s
 import { SubmitPublicationRequestInteractor } from './application/use-cases/submit-publication-request/submit-publication-request.interactor';
 import { PublicationRequestPrismaRepositoryAdapter } from './infrastructure/persistence/prisma/publication-request.prisma.repository.adapter';
 import { PublicationsController } from './presentation/http/controllers/publications.controller';
+import { CAPTCHA_VERIFIER } from './application/ports/output/captcha-verifier.port';
+import { TurnstileCaptchaVerifierAdapter } from './infrastructure/captcha/turnstile-captcha-verifier.adapter';
 
 @Module({
   controllers: [PublicationsController],
@@ -43,6 +45,10 @@ import { PublicationsController } from './presentation/http/controllers/publicat
     {
       provide: START_REVIEW_PUBLICATION_REQUEST_INPUT_PORT,
       useClass: StartReviewPublicationRequestInteractor,
+    },
+    {
+      provide: CAPTCHA_VERIFIER,
+      useClass: TurnstileCaptchaVerifierAdapter,
     },
   ],
 })
