@@ -1,12 +1,3 @@
-/**
- * main.ts — Entry point de la aplicación NestJS.
- *
- * Configura el bootstrap completo: filtros globales, validación, seguridad,
- * documentación OpenAPI y CORS.
- */
-
-// CRÍTICO: instrument.ts debe importarse primero para que Sentry
-// instrumente el runtime antes de que NestJS registre sus handlers.
 import './instrument';
 
 import { ValidationPipe } from '@nestjs/common';
@@ -29,7 +20,11 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
 
   app.enableCors({
-    origin: ['http://localhost:5173'],
+    origin: [
+      'http://localhost:5173',
+      'https://inmuebles-el-guarzo-frontend.vercel.app',
+      'https://www.inmuebleselguarzo.com',
+    ],
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
