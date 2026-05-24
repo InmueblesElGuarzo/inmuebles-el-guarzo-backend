@@ -29,11 +29,15 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
 
   app.enableCors({
+<<<<<<< HEAD
     origin: [
       'http://localhost:5173',
       'https://inmuebles-el-guarzo-frontend.vercel.app',
       'https://www.inmuebleselguarzo.com',
     ],
+=======
+    origin: ['http://localhost:5173'],
+>>>>>>> origin/main
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
