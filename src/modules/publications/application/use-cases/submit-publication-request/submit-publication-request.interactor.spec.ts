@@ -6,25 +6,16 @@ import { PhoneNumber } from '../../../../../shared-kernel/domain/value-objects/p
 import { EventBus } from '../../../../../shared-kernel/infrastructure/event-bus/event-bus.port';
 import { PublicationRequest } from '../../../domain/aggregates/publication-request.aggregate';
 import { DuplicatePublicationRequestException } from '../../../domain/exceptions/duplicate-publication-request.exception';
-<<<<<<< HEAD
 import { InvalidCaptchaException } from '../../../domain/exceptions/invalid-captcha.exception';
 import { ProposedDescription } from '../../../domain/value-objects/proposed-description.value-object';
 import { ProposedLocation } from '../../../domain/value-objects/proposed-location.value-object';
-=======
->>>>>>> origin/main
 import { PublicationRequestOfferType } from '../../../domain/value-objects/publication-request-offer-type.value-object';
 import {
   PublicationRequestStatus,
   PublicationRequestStatusValue,
 } from '../../../domain/value-objects/publication-request-status.value-object';
-<<<<<<< HEAD
 import { ReferenceNumber } from '../../../domain/value-objects/reference-number.value-object';
 import { CaptchaVerifierPort } from '../../ports/output/captcha-verifier.port';
-=======
-import { ProposedDescription } from '../../../domain/value-objects/proposed-description.value-object';
-import { ProposedLocation } from '../../../domain/value-objects/proposed-location.value-object';
-import { ReferenceNumber } from '../../../domain/value-objects/reference-number.value-object';
->>>>>>> origin/main
 import { PublicationRequestRepositoryPort } from '../../ports/output/publication-request.repository.port';
 import { SubmitPublicationRequestInteractor } from './submit-publication-request.interactor';
 
@@ -43,13 +34,10 @@ const buildMockEventBus = (): jest.Mocked<EventBus> => ({
   register: jest.fn(),
 });
 
-<<<<<<< HEAD
 const buildMockCaptchaVerifier = (): jest.Mocked<CaptchaVerifierPort> => ({
   verify: jest.fn(),
 });
 
-=======
->>>>>>> origin/main
 const buildExistingRequest = (): PublicationRequest =>
   PublicationRequest.fromPersistence({
     id: UniqueId.fromString(REQUEST_UUID),
@@ -91,7 +79,6 @@ const VALID_INPUT = {
   captchaToken: 'valid-captcha-token',
 };
 
-<<<<<<< HEAD
 describe('SubmitPublicationRequestInteractor.execute — CAPTCHA inválido', () => {
   it('should return Result.fail with InvalidCaptchaException when captcha is rejected', async () => {
     const repo = buildMockRepo();
@@ -120,27 +107,18 @@ describe('SubmitPublicationRequestInteractor.execute — CAPTCHA inválido', () 
   });
 });
 
-=======
->>>>>>> origin/main
 describe('SubmitPublicationRequestInteractor.execute — submit exitoso', () => {
   it('should return Result.ok with PENDING_REVIEW status and valid referenceNumber', async () => {
     const repo = buildMockRepo();
     const eventBus = buildMockEventBus();
-<<<<<<< HEAD
     const captchaVerifier = buildMockCaptchaVerifier();
     captchaVerifier.verify.mockResolvedValue(true);
-=======
->>>>>>> origin/main
     repo.findByDedupHash.mockResolvedValue(Maybe.none());
     repo.nextReferenceNumber.mockResolvedValue(1);
     repo.save.mockResolvedValue(undefined);
     eventBus.publish.mockResolvedValue(undefined);
 
-<<<<<<< HEAD
     const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
-=======
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus);
->>>>>>> origin/main
     const result = await interactor.execute(VALID_INPUT);
 
     expect(result.isSuccess).toBe(true);
@@ -151,21 +129,14 @@ describe('SubmitPublicationRequestInteractor.execute — submit exitoso', () => 
   it('should persist the request and publish domain events', async () => {
     const repo = buildMockRepo();
     const eventBus = buildMockEventBus();
-<<<<<<< HEAD
     const captchaVerifier = buildMockCaptchaVerifier();
     captchaVerifier.verify.mockResolvedValue(true);
-=======
->>>>>>> origin/main
     repo.findByDedupHash.mockResolvedValue(Maybe.none());
     repo.nextReferenceNumber.mockResolvedValue(2);
     repo.save.mockResolvedValue(undefined);
     eventBus.publish.mockResolvedValue(undefined);
 
-<<<<<<< HEAD
     const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
-=======
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus);
->>>>>>> origin/main
     await interactor.execute(VALID_INPUT);
 
     expect(repo.save.mock.calls).toHaveLength(1);
@@ -177,17 +148,11 @@ describe('SubmitPublicationRequestInteractor.execute — dedupHash duplicado', (
   it('should return Result.fail with DuplicatePublicationRequestException', async () => {
     const repo = buildMockRepo();
     const eventBus = buildMockEventBus();
-<<<<<<< HEAD
     const captchaVerifier = buildMockCaptchaVerifier();
     captchaVerifier.verify.mockResolvedValue(true);
     repo.findByDedupHash.mockResolvedValue(Maybe.some(buildExistingRequest()));
 
     const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
-=======
-    repo.findByDedupHash.mockResolvedValue(Maybe.some(buildExistingRequest()));
-
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus);
->>>>>>> origin/main
     const result = await interactor.execute(VALID_INPUT);
 
     expect(result.isFailure).toBe(true);
@@ -197,17 +162,11 @@ describe('SubmitPublicationRequestInteractor.execute — dedupHash duplicado', (
   it('should not persist nor publish events when duplicate is found', async () => {
     const repo = buildMockRepo();
     const eventBus = buildMockEventBus();
-<<<<<<< HEAD
     const captchaVerifier = buildMockCaptchaVerifier();
     captchaVerifier.verify.mockResolvedValue(true);
     repo.findByDedupHash.mockResolvedValue(Maybe.some(buildExistingRequest()));
 
     const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
-=======
-    repo.findByDedupHash.mockResolvedValue(Maybe.some(buildExistingRequest()));
-
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus);
->>>>>>> origin/main
     await interactor.execute(VALID_INPUT);
 
     expect(repo.save.mock.calls).toHaveLength(0);
@@ -219,21 +178,14 @@ describe('SubmitPublicationRequestInteractor.execute — VOs construidos desde s
   it('should normalize lowercase offerType and succeed', async () => {
     const repo = buildMockRepo();
     const eventBus = buildMockEventBus();
-<<<<<<< HEAD
     const captchaVerifier = buildMockCaptchaVerifier();
     captchaVerifier.verify.mockResolvedValue(true);
-=======
->>>>>>> origin/main
     repo.findByDedupHash.mockResolvedValue(Maybe.none());
     repo.nextReferenceNumber.mockResolvedValue(3);
     repo.save.mockResolvedValue(undefined);
     eventBus.publish.mockResolvedValue(undefined);
 
-<<<<<<< HEAD
     const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
-=======
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus);
->>>>>>> origin/main
     const result = await interactor.execute({ ...VALID_INPUT, proposedOfferType: 'sale' });
 
     expect(result.isSuccess).toBe(true);
