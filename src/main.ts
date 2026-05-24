@@ -20,11 +20,21 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
 
   app.enableCors({
-    origin: [
-      'http://localhost:5173',
-      'https://inmuebles-el-guarzo-frontend.vercel.app',
-      'https://www.inmuebleselguarzo.com',
-    ],
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      const allowed = [
+        'http://localhost:5173',
+        'https://inmuebles-el-guarzo-frontend.vercel.app',
+        'https://www.inmuebleselguarzo.com',
+      ];
+      if (!origin || allowed.includes(origin) || origin.endsWith('.vercel.app')) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
