@@ -64,7 +64,9 @@ export class SubmitPublicationRequestHttpDto {
   public proposedAreaM2?: number;
 
   @IsString()
+  @IsNotEmpty()
   @MinLength(20)
+  @MaxLength(2000)
   public proposedDescription!: string;
 
   @IsOptional()
