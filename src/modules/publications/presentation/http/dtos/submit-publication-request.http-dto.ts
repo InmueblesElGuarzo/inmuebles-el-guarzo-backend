@@ -1,4 +1,6 @@
 import {
+  Equals,
+  IsBoolean,
   IsEmail,
   IsIn,
   IsNotEmpty,
@@ -78,4 +80,8 @@ export class SubmitPublicationRequestHttpDto {
   @IsString()
   @IsNotEmpty()
   public captchaToken!: string;
+
+  @IsBoolean()
+  @Equals(true, { message: 'El consentimiento de tratamiento de datos personales es obligatorio.' })
+  public consentAccepted!: boolean;
 }
