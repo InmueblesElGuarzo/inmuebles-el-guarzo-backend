@@ -1,3 +1,4 @@
+import { CacheInterceptor, CacheKey, CacheTTL, CACHE_MANAGER } from '@nestjs/cache-manager';
 import {
   Body,
   Controller,
@@ -9,7 +10,9 @@ import {
   Post,
   Query,
   Req,
+  UseInterceptors,
 } from '@nestjs/common';
+import type { Cache } from 'cache-manager';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -95,6 +98,9 @@ export class PublicationsController {
     private readonly rejectInteractor: RejectPublicationRequestInputPort,
   ) {}
 
+  @Inject(CACHE_MANAGER)
+  private readonly cacheManager!: Cache;
+
   @Post()
   @Public()
   @HttpCode(201)
@@ -119,6 +125,9 @@ export class PublicationsController {
 
   @Get()
   @ApiBearerAuth()
+  @UseInterceptors(CacheInterceptor)
+  @CacheKey('publications-list')
+  @CacheTTL(60)
   @ApiOperation({ summary: 'List publication requests (ADMIN)' })
   @ApiOkResponse({ type: ListPublicationRequestsHttpResponse })
   public async list(
@@ -172,6 +181,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
+    await this.cacheManager.del('publications-list');
     return ApprovePublicationRequestPresenter.toHttp(result.value);
   }
 
@@ -194,6 +204,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
+    await this.cacheManager.del('publications-list');
     return StartReviewPublicationRequestPresenter.toHttp(result.value);
   }
 
@@ -218,6 +229,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
+    await this.cacheManager.del('publications-list');
     return RejectPublicationRequestPresenter.toHttp(result.value);
   }
 }
