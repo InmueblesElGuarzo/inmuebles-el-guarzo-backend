@@ -78,8 +78,8 @@ import {
   SubmitPublicationRequestPresenter,
 } from '../presenters/submit-publication-request.presenter';
 
-const PUBLICATIONS_LIST_CACHE_KEY = 'publications-list';
-const PUBLICATIONS_LIST_TTL_SECONDS = 60;
+const DETAIL_CACHE_KEY_PREFIX = 'publication-detail:';
+const DETAIL_CACHE_TTL_SECONDS = 120;
 
 @ApiTags('Publications')
 @Controller('publications')
@@ -136,23 +136,11 @@ export class PublicationsController {
     if (user.role !== 'ADMIN') {
       throw new ForbiddenException();
     }
-
-    const cached = await this.redis.get<ListPublicationRequestsHttpResponse>(
-      PUBLICATIONS_LIST_CACHE_KEY,
-    );
-    if (cached) {
-      return cached;
-    }
-
     const result = await this.listInteractor.execute(query);
     if (result.isFailure) {
       throw result.error;
     }
-    const response = ListPublicationRequestsPresenter.toHttp(result.value);
-    await this.redis.set(PUBLICATIONS_LIST_CACHE_KEY, response, {
-      ex: PUBLICATIONS_LIST_TTL_SECONDS,
-    });
-    return response;
+    return ListPublicationRequestsPresenter.toHttp(result.value);
   }
 
   @Get(':id')
@@ -166,11 +154,20 @@ export class PublicationsController {
     if (user.role !== 'ADMIN') {
       throw new ForbiddenException();
     }
+
+    const cacheKey = `${DETAIL_CACHE_KEY_PREFIX}${id}`;
+    const cached = await this.redis.get<GetPublicationRequestDetailHttpResponse>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const result = await this.getDetailInteractor.execute({ publicationRequestId: id });
     if (result.isFailure) {
       throw result.error;
     }
-    return GetPublicationRequestDetailPresenter.toHttp(result.value);
+    const response = GetPublicationRequestDetailPresenter.toHttp(result.value);
+    await this.redis.set(cacheKey, response, { ex: DETAIL_CACHE_TTL_SECONDS });
+    return response;
   }
 
   @Post(':id/approve')
@@ -192,7 +189,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
-    await this.redis.del(PUBLICATIONS_LIST_CACHE_KEY);
+    await this.redis.del(`${DETAIL_CACHE_KEY_PREFIX}${id}`);
     return ApprovePublicationRequestPresenter.toHttp(result.value);
   }
 
@@ -215,7 +212,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
-    await this.redis.del(PUBLICATIONS_LIST_CACHE_KEY);
+    await this.redis.del(`${DETAIL_CACHE_KEY_PREFIX}${id}`);
     return StartReviewPublicationRequestPresenter.toHttp(result.value);
   }
 
@@ -240,7 +237,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
-    await this.redis.del(PUBLICATIONS_LIST_CACHE_KEY);
+    await this.redis.del(`${DETAIL_CACHE_KEY_PREFIX}${id}`);
     return RejectPublicationRequestPresenter.toHttp(result.value);
   }
 }
