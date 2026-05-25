@@ -10,6 +10,7 @@ import { PublicationsModule } from './modules/publications/publications.module';
 import { JwtAuthGuard } from './modules/iam/presentation/http/guards/jwt-auth.guard';
 import { validateEnv } from './shared-kernel/infrastructure/config/env.validator';
 import { pinoLoggerConfig } from './shared-kernel/infrastructure/logger/pino-logger.config';
+import { CacheInfrastructureModule } from './shared-kernel/infrastructure/cache/cache.module';
 import { SharedKernelModule } from './shared-kernel/shared-kernel.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { SharedKernelModule } from './shared-kernel/shared-kernel.module';
     SentryModule.forRoot(),
     LoggerModule.forRoot(pinoLoggerConfig),
     SharedKernelModule,
+    CacheInfrastructureModule,
     IamModule,
     PublicationsModule,
     NotificationsModule,
