@@ -79,4 +79,12 @@ export class EnvSchema {
   @IsString()
   @IsNotEmpty()
   RESEND_API_KEY?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  UPSTASH_REDIS_REST_URL!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  UPSTASH_REDIS_REST_TOKEN!: string;
 }
