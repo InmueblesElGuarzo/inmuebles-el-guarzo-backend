@@ -1,4 +1,3 @@
-import { CacheInterceptor, CacheKey, CacheTTL, CACHE_MANAGER } from '@nestjs/cache-manager';
 import {
   Body,
   Controller,
@@ -10,9 +9,7 @@ import {
   Post,
   Query,
   Req,
-  UseInterceptors,
 } from '@nestjs/common';
-import type { Cache } from 'cache-manager';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -20,8 +17,10 @@ import {
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { Redis } from '@upstash/redis';
 import type { Request } from 'express';
 
+import { UPSTASH_REDIS } from '../../../../../shared-kernel/infrastructure/cache/cache.module';
 import { Public } from '../../../../../shared-kernel/presentation/decorators/public.decorator';
 import { AuthenticatedUser } from '../../../../iam/application/ports/output/identity-provider.port';
 import { CurrentUser } from '../../../../iam/presentation/http/decorators/current-user.decorator';
@@ -79,11 +78,17 @@ import {
   SubmitPublicationRequestPresenter,
 } from '../presenters/submit-publication-request.presenter';
 
+const PUBLICATIONS_LIST_CACHE_KEY = 'publications-list';
+const PUBLICATIONS_LIST_TTL_SECONDS = 60;
+
 @ApiTags('Publications')
 @Controller('publications')
 export class PublicationsController {
   @Inject(START_REVIEW_PUBLICATION_REQUEST_INPUT_PORT)
   private readonly startReviewInteractor!: StartReviewPublicationRequestInputPort;
+
+  @Inject(UPSTASH_REDIS)
+  private readonly redis!: Redis;
 
   public constructor(
     @Inject(SUBMIT_PUBLICATION_REQUEST_INPUT_PORT)
@@ -97,9 +102,6 @@ export class PublicationsController {
     @Inject(REJECT_PUBLICATION_REQUEST_INPUT_PORT)
     private readonly rejectInteractor: RejectPublicationRequestInputPort,
   ) {}
-
-  @Inject(CACHE_MANAGER)
-  private readonly cacheManager!: Cache;
 
   @Post()
   @Public()
@@ -125,9 +127,6 @@ export class PublicationsController {
 
   @Get()
   @ApiBearerAuth()
-  @UseInterceptors(CacheInterceptor)
-  @CacheKey('publications-list')
-  @CacheTTL(60)
   @ApiOperation({ summary: 'List publication requests (ADMIN)' })
   @ApiOkResponse({ type: ListPublicationRequestsHttpResponse })
   public async list(
@@ -137,11 +136,23 @@ export class PublicationsController {
     if (user.role !== 'ADMIN') {
       throw new ForbiddenException();
     }
+
+    const cached = await this.redis.get<ListPublicationRequestsHttpResponse>(
+      PUBLICATIONS_LIST_CACHE_KEY,
+    );
+    if (cached) {
+      return cached;
+    }
+
     const result = await this.listInteractor.execute(query);
     if (result.isFailure) {
       throw result.error;
     }
-    return ListPublicationRequestsPresenter.toHttp(result.value);
+    const response = ListPublicationRequestsPresenter.toHttp(result.value);
+    await this.redis.set(PUBLICATIONS_LIST_CACHE_KEY, response, {
+      ex: PUBLICATIONS_LIST_TTL_SECONDS,
+    });
+    return response;
   }
 
   @Get(':id')
@@ -181,7 +192,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
-    await this.cacheManager.del('publications-list');
+    await this.redis.del(PUBLICATIONS_LIST_CACHE_KEY);
     return ApprovePublicationRequestPresenter.toHttp(result.value);
   }
 
@@ -204,7 +215,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
-    await this.cacheManager.del('publications-list');
+    await this.redis.del(PUBLICATIONS_LIST_CACHE_KEY);
     return StartReviewPublicationRequestPresenter.toHttp(result.value);
   }
 
@@ -229,7 +240,7 @@ export class PublicationsController {
     if (result.isFailure) {
       throw result.error;
     }
-    await this.cacheManager.del('publications-list');
+    await this.redis.del(PUBLICATIONS_LIST_CACHE_KEY);
     return RejectPublicationRequestPresenter.toHttp(result.value);
   }
 }
