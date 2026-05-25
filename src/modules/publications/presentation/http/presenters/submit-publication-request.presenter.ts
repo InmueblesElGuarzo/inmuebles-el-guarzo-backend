@@ -1,10 +1,18 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { SubmitPublicationRequestOutput } from '../../../application/use-cases/submit-publication-request/dtos/submit-publication-request-output.dto';
 
-export interface SubmitPublicationRequestHttpResponse {
-  id: string;
-  referenceNumber: string;
-  status: string;
-  createdAt: string;
+export class SubmitPublicationRequestHttpResponse {
+  @ApiProperty({ format: 'uuid' })
+  public id!: string;
+
+  @ApiProperty({ example: 'PUB-2026-00001' })
+  public referenceNumber!: string;
+
+  @ApiProperty({ example: 'PENDING_REVIEW' })
+  public status!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  public createdAt!: string;
 }
 
 export class SubmitPublicationRequestPresenter {

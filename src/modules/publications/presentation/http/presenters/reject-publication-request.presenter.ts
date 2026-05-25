@@ -1,10 +1,18 @@
+import { ApiProperty } from '@nestjs/swagger';
 import { RejectPublicationRequestOutput } from '../../../application/use-cases/reject-publication-request/dtos/reject-publication-request-output.dto';
 
-export interface RejectPublicationRequestHttpResponse {
-  id: string;
-  referenceNumber: string;
-  status: string;
-  decisionAt: string;
+export class RejectPublicationRequestHttpResponse {
+  @ApiProperty({ format: 'uuid' })
+  public id!: string;
+
+  @ApiProperty({ example: 'PUB-2026-00001' })
+  public referenceNumber!: string;
+
+  @ApiProperty({ example: 'REJECTED' })
+  public status!: string;
+
+  @ApiProperty({ format: 'date-time' })
+  public decisionAt!: string;
 }
 
 export class RejectPublicationRequestPresenter {
