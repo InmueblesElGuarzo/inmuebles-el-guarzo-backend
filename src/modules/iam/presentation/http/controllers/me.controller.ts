@@ -33,7 +33,7 @@ export class MeController {
 
   @Get()
   @ApiOperation({ summary: 'Get the currently authenticated user profile' })
-  @ApiOkResponse({ description: 'Authenticated user profile' })
+  @ApiOkResponse({ type: MeHttpResponse })
   public async getMe(@CurrentUser() user: AuthenticatedUser): Promise<MeHttpResponse> {
     const result = await this.getCurrentUser.execute({ userId: user.id });
 
