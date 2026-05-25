@@ -35,6 +35,7 @@ import {
   PublicationRequestRepositoryPort,
 } from '../../ports/output/publication-request.repository.port';
 
+import { sanitizeText } from '../../../../../shared-kernel/domain/sanitize-html.util';
 import { RejectPublicationRequestInput } from './dtos/reject-publication-request-input.dto';
 import { RejectPublicationRequestOutput } from './dtos/reject-publication-request-output.dto';
 import { RejectPublicationRequestInputPort } from './dtos/reject-publication-request.input-port';
@@ -60,10 +61,11 @@ export class RejectPublicationRequestInteractor implements RejectPublicationRequ
     if (request.status.isTerminal()) {
       return Result.fail(new PublicationRequestAlreadyDecidedException(input.publicationRequestId));
     }
-    if (input.decisionMotive.trim().length === 0) {
+    const sanitizedMotive = sanitizeText(input.decisionMotive);
+    if (sanitizedMotive.trim().length === 0) {
       return Result.fail(new DecisionMotiveRequiredException());
     }
-    request.reject(UniqueId.fromString(input.decidedByAdminId), input.decisionMotive);
+    request.reject(UniqueId.fromString(input.decidedByAdminId), sanitizedMotive);
     await this.repo.save(request);
     const events = request.pullDomainEvents();
     await this.eventBus.publish(events);
