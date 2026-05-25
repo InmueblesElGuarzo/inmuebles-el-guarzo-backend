@@ -11,6 +11,7 @@
  * → CAPA: Entities (Uncle Bob)
  */
 
+import { sanitizeText } from '../../../../shared-kernel/domain/sanitize-html.util';
 import { InvalidProposedDescriptionException } from '../exceptions/invalid-proposed-description.exception';
 
 export class ProposedDescription {
@@ -23,10 +24,10 @@ export class ProposedDescription {
   }
 
   public static create(raw: string): ProposedDescription {
-    const normalized = raw.trim();
+    const sanitized = sanitizeText(raw);
+    const normalized = sanitized.trim();
     const length = normalized.length;
 
-    // Validación de rango (Mínimo y Máximo)
     if (length < ProposedDescription.MIN_LENGTH || length > ProposedDescription.MAX_LENGTH) {
       throw new InvalidProposedDescriptionException(raw);
     }
