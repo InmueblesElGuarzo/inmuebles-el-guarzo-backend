@@ -99,7 +99,7 @@ export class PublicationsController {
   @Public()
   @HttpCode(201)
   @ApiOperation({ summary: 'Submit a new publication request' })
-  @ApiCreatedResponse({ description: 'Publication request created' })
+  @ApiCreatedResponse({ type: SubmitPublicationRequestHttpResponse })
   public async submit(
     @Body() dto: SubmitPublicationRequestHttpDto,
     @Req() req: Request,
@@ -120,7 +120,7 @@ export class PublicationsController {
   @Get()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List publication requests (ADMIN)' })
-  @ApiOkResponse({ description: 'Paginated list of publication requests' })
+  @ApiOkResponse({ type: ListPublicationRequestsHttpResponse })
   public async list(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: ListPublicationRequestsHttpDto,
@@ -138,7 +138,7 @@ export class PublicationsController {
   @Get(':id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get publication request detail (ADMIN)' })
-  @ApiOkResponse({ description: 'Publication request detail' })
+  @ApiOkResponse({ type: GetPublicationRequestDetailHttpResponse })
   public async getDetail(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -157,7 +157,7 @@ export class PublicationsController {
   @HttpCode(200)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Approve a publication request (ADMIN)' })
-  @ApiOkResponse({ description: 'Publication request approved' })
+  @ApiOkResponse({ type: ApprovePublicationRequestHttpResponse })
   public async approve(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -179,7 +179,7 @@ export class PublicationsController {
   @HttpCode(200)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Start review of a publication request (ADMIN)' })
-  @ApiOkResponse({ description: 'Publication request under review' })
+  @ApiOkResponse({ type: StartReviewPublicationRequestHttpResponse })
   public async startReview(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -201,7 +201,7 @@ export class PublicationsController {
   @HttpCode(200)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reject a publication request (ADMIN)' })
-  @ApiOkResponse({ description: 'Publication request rejected' })
+  @ApiOkResponse({ type: RejectPublicationRequestHttpResponse })
   public async reject(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
