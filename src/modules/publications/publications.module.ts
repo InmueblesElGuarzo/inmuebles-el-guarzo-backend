@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { CAPTCHA_VERIFIER } from './application/ports/output/captcha-verifier.port';
+import { PERSONAL_DATA_AUTHORIZATION_REPOSITORY } from './application/ports/output/personal-data-authorization.repository.port';
 import { PUBLICATION_REQUEST_REPOSITORY } from './application/ports/output/publication-request.repository.port';
 import { ApprovePublicationRequestInteractor } from './application/use-cases/approve-publication-request/approve-publication-request.interactor';
 import { APPROVE_PUBLICATION_REQUEST_INPUT_PORT } from './application/use-cases/approve-publication-request/dtos/approve-publication-request.input-port';
@@ -15,6 +16,7 @@ import { StartReviewPublicationRequestInteractor } from './application/use-cases
 import { SUBMIT_PUBLICATION_REQUEST_INPUT_PORT } from './application/use-cases/submit-publication-request/dtos/submit-publication-request.input-port';
 import { SubmitPublicationRequestInteractor } from './application/use-cases/submit-publication-request/submit-publication-request.interactor';
 import { TurnstileCaptchaVerifierAdapter } from './infrastructure/captcha/turnstile-captcha-verifier.adapter';
+import { PersonalDataAuthorizationPrismaRepositoryAdapter } from './infrastructure/persistence/prisma/personal-data-authorization.prisma.repository.adapter';
 import { PublicationRequestPrismaRepositoryAdapter } from './infrastructure/persistence/prisma/publication-request.prisma.repository.adapter';
 import { PublicationsController } from './presentation/http/controllers/publications.controller';
 
@@ -24,6 +26,10 @@ import { PublicationsController } from './presentation/http/controllers/publicat
     {
       provide: PUBLICATION_REQUEST_REPOSITORY,
       useClass: PublicationRequestPrismaRepositoryAdapter,
+    },
+    {
+      provide: PERSONAL_DATA_AUTHORIZATION_REPOSITORY,
+      useClass: PersonalDataAuthorizationPrismaRepositoryAdapter,
     },
     {
       provide: SUBMIT_PUBLICATION_REQUEST_INPUT_PORT,

@@ -4,6 +4,7 @@ import { Email } from '../../../../../shared-kernel/domain/value-objects/email.v
 import { FullName } from '../../../../../shared-kernel/domain/value-objects/full-name.value-object';
 import { PhoneNumber } from '../../../../../shared-kernel/domain/value-objects/phone-number.value-object';
 import { EventBus } from '../../../../../shared-kernel/infrastructure/event-bus/event-bus.port';
+import { PrismaService } from '../../../../../shared-kernel/infrastructure/prisma/prisma.service';
 import { PublicationRequest } from '../../../domain/aggregates/publication-request.aggregate';
 import { DuplicatePublicationRequestException } from '../../../domain/exceptions/duplicate-publication-request.exception';
 import { InvalidCaptchaException } from '../../../domain/exceptions/invalid-captcha.exception';
@@ -16,8 +17,11 @@ import {
 } from '../../../domain/value-objects/publication-request-status.value-object';
 import { ReferenceNumber } from '../../../domain/value-objects/reference-number.value-object';
 import { CaptchaVerifierPort } from '../../ports/output/captcha-verifier.port';
+import { PersonalDataAuthorizationRepositoryPort } from '../../ports/output/personal-data-authorization.repository.port';
 import { PublicationRequestRepositoryPort } from '../../ports/output/publication-request.repository.port';
 import { SubmitPublicationRequestInteractor } from './submit-publication-request.interactor';
+
+type PrismaMock = { $transaction: jest.Mock };
 
 const REQUEST_UUID = '550e8400-e29b-41d4-a716-446655440000';
 
@@ -29,6 +33,10 @@ const buildMockRepo = (): jest.Mocked<PublicationRequestRepositoryPort> => ({
   nextReferenceNumber: jest.fn(),
 });
 
+const buildMockPersonalDataRepo = (): jest.Mocked<PersonalDataAuthorizationRepositoryPort> => ({
+  save: jest.fn(),
+});
+
 const buildMockEventBus = (): jest.Mocked<EventBus> => ({
   publish: jest.fn(),
   register: jest.fn(),
@@ -36,6 +44,10 @@ const buildMockEventBus = (): jest.Mocked<EventBus> => ({
 
 const buildMockCaptchaVerifier = (): jest.Mocked<CaptchaVerifierPort> => ({
   verify: jest.fn(),
+});
+
+const buildMockPrisma = (): PrismaMock => ({
+  $transaction: jest.fn(),
 });
 
 const buildExistingRequest = (): PublicationRequest =>
@@ -79,14 +91,31 @@ const VALID_INPUT = {
   captchaToken: 'valid-captcha-token',
 };
 
+const buildInteractor = (
+  repo: jest.Mocked<PublicationRequestRepositoryPort>,
+  personalDataRepo: jest.Mocked<PersonalDataAuthorizationRepositoryPort>,
+  eventBus: jest.Mocked<EventBus>,
+  captchaVerifier: jest.Mocked<CaptchaVerifierPort>,
+  prisma: PrismaMock,
+): SubmitPublicationRequestInteractor =>
+  new SubmitPublicationRequestInteractor(
+    repo,
+    personalDataRepo,
+    eventBus,
+    captchaVerifier,
+    prisma as unknown as PrismaService,
+  );
+
 describe('SubmitPublicationRequestInteractor.execute — CAPTCHA inválido', () => {
   it('should return Result.fail with InvalidCaptchaException when captcha is rejected', async () => {
     const repo = buildMockRepo();
+    const personalDataRepo = buildMockPersonalDataRepo();
     const eventBus = buildMockEventBus();
     const captchaVerifier = buildMockCaptchaVerifier();
+    const prisma = buildMockPrisma();
     captchaVerifier.verify.mockResolvedValue(false);
 
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
+    const interactor = buildInteractor(repo, personalDataRepo, eventBus, captchaVerifier, prisma);
     const result = await interactor.execute(VALID_INPUT);
 
     expect(result.isFailure).toBe(true);
@@ -95,51 +124,57 @@ describe('SubmitPublicationRequestInteractor.execute — CAPTCHA inválido', () 
 
   it('should not persist nor publish events when captcha is invalid', async () => {
     const repo = buildMockRepo();
+    const personalDataRepo = buildMockPersonalDataRepo();
     const eventBus = buildMockEventBus();
     const captchaVerifier = buildMockCaptchaVerifier();
+    const prisma = buildMockPrisma();
     captchaVerifier.verify.mockResolvedValue(false);
 
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
+    const interactor = buildInteractor(repo, personalDataRepo, eventBus, captchaVerifier, prisma);
     await interactor.execute(VALID_INPUT);
 
     expect(repo.save.mock.calls).toHaveLength(0);
+    expect(personalDataRepo.save.mock.calls).toHaveLength(0);
     expect(eventBus.publish.mock.calls).toHaveLength(0);
   });
 });
 
 describe('SubmitPublicationRequestInteractor.execute — submit exitoso', () => {
-  it('should return Result.ok with PENDING_REVIEW status and valid referenceNumber', async () => {
-    const repo = buildMockRepo();
-    const eventBus = buildMockEventBus();
+  let repo: jest.Mocked<PublicationRequestRepositoryPort>;
+  let personalDataRepo: jest.Mocked<PersonalDataAuthorizationRepositoryPort>;
+  let eventBus: jest.Mocked<EventBus>;
+  let prisma: PrismaMock;
+  let interactor: SubmitPublicationRequestInteractor;
+
+  beforeEach(() => {
+    repo = buildMockRepo();
+    personalDataRepo = buildMockPersonalDataRepo();
+    eventBus = buildMockEventBus();
     const captchaVerifier = buildMockCaptchaVerifier();
+    prisma = buildMockPrisma();
     captchaVerifier.verify.mockResolvedValue(true);
     repo.findByDedupHash.mockResolvedValue(Maybe.none());
-    repo.nextReferenceNumber.mockResolvedValue(1);
     repo.save.mockResolvedValue(undefined);
+    personalDataRepo.save.mockResolvedValue(undefined);
     eventBus.publish.mockResolvedValue(undefined);
+    prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) => cb({}));
+    interactor = buildInteractor(repo, personalDataRepo, eventBus, captchaVerifier, prisma);
+  });
 
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
+  it('should return Result.ok with PENDING_REVIEW status and valid referenceNumber', async () => {
+    repo.nextReferenceNumber.mockResolvedValue(1);
     const result = await interactor.execute(VALID_INPUT);
-
     expect(result.isSuccess).toBe(true);
     expect(result.value.referenceNumber).toMatch(/^PUB-\d{4}-\d{5}$/);
     expect(result.value.status).toBe(PublicationRequestStatusValue.PENDING_REVIEW);
   });
 
-  it('should persist the request and publish domain events', async () => {
-    const repo = buildMockRepo();
-    const eventBus = buildMockEventBus();
-    const captchaVerifier = buildMockCaptchaVerifier();
-    captchaVerifier.verify.mockResolvedValue(true);
-    repo.findByDedupHash.mockResolvedValue(Maybe.none());
+  it('should persist both entities in a transaction and publish domain events', async () => {
     repo.nextReferenceNumber.mockResolvedValue(2);
-    repo.save.mockResolvedValue(undefined);
-    eventBus.publish.mockResolvedValue(undefined);
-
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
     await interactor.execute(VALID_INPUT);
-
+    expect(prisma.$transaction.mock.calls).toHaveLength(1);
     expect(repo.save.mock.calls).toHaveLength(1);
+    expect(personalDataRepo.save.mock.calls).toHaveLength(1);
     expect(eventBus.publish.mock.calls).toHaveLength(1);
   });
 });
@@ -147,12 +182,14 @@ describe('SubmitPublicationRequestInteractor.execute — submit exitoso', () => 
 describe('SubmitPublicationRequestInteractor.execute — dedupHash duplicado', () => {
   it('should return Result.fail with DuplicatePublicationRequestException', async () => {
     const repo = buildMockRepo();
+    const personalDataRepo = buildMockPersonalDataRepo();
     const eventBus = buildMockEventBus();
     const captchaVerifier = buildMockCaptchaVerifier();
+    const prisma = buildMockPrisma();
     captchaVerifier.verify.mockResolvedValue(true);
     repo.findByDedupHash.mockResolvedValue(Maybe.some(buildExistingRequest()));
 
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
+    const interactor = buildInteractor(repo, personalDataRepo, eventBus, captchaVerifier, prisma);
     const result = await interactor.execute(VALID_INPUT);
 
     expect(result.isFailure).toBe(true);
@@ -161,15 +198,18 @@ describe('SubmitPublicationRequestInteractor.execute — dedupHash duplicado', (
 
   it('should not persist nor publish events when duplicate is found', async () => {
     const repo = buildMockRepo();
+    const personalDataRepo = buildMockPersonalDataRepo();
     const eventBus = buildMockEventBus();
     const captchaVerifier = buildMockCaptchaVerifier();
+    const prisma = buildMockPrisma();
     captchaVerifier.verify.mockResolvedValue(true);
     repo.findByDedupHash.mockResolvedValue(Maybe.some(buildExistingRequest()));
 
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
+    const interactor = buildInteractor(repo, personalDataRepo, eventBus, captchaVerifier, prisma);
     await interactor.execute(VALID_INPUT);
 
     expect(repo.save.mock.calls).toHaveLength(0);
+    expect(personalDataRepo.save.mock.calls).toHaveLength(0);
     expect(eventBus.publish.mock.calls).toHaveLength(0);
   });
 });
@@ -177,15 +217,19 @@ describe('SubmitPublicationRequestInteractor.execute — dedupHash duplicado', (
 describe('SubmitPublicationRequestInteractor.execute — VOs construidos desde strings', () => {
   it('should normalize lowercase offerType and succeed', async () => {
     const repo = buildMockRepo();
+    const personalDataRepo = buildMockPersonalDataRepo();
     const eventBus = buildMockEventBus();
     const captchaVerifier = buildMockCaptchaVerifier();
+    const prisma = buildMockPrisma();
     captchaVerifier.verify.mockResolvedValue(true);
     repo.findByDedupHash.mockResolvedValue(Maybe.none());
     repo.nextReferenceNumber.mockResolvedValue(3);
     repo.save.mockResolvedValue(undefined);
+    personalDataRepo.save.mockResolvedValue(undefined);
     eventBus.publish.mockResolvedValue(undefined);
+    prisma.$transaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) => cb({}));
 
-    const interactor = new SubmitPublicationRequestInteractor(repo, eventBus, captchaVerifier);
+    const interactor = buildInteractor(repo, personalDataRepo, eventBus, captchaVerifier, prisma);
     const result = await interactor.execute({ ...VALID_INPUT, proposedOfferType: 'sale' });
 
     expect(result.isSuccess).toBe(true);

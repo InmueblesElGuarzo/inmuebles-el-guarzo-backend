@@ -6,8 +6,10 @@
  *   2. Calcular dedupHash (SHA-256 de email + location + offerType).
  *   3. Verificar que no exista una solicitud con ese hash (anti-spam).
  *   4. Obtener el siguiente numero de referencia para el año en curso.
- *   5. Construir los VOs y llamar a PublicationRequest.submit().
- *   6. Persistir y publicar eventos de dominio.
+ *   5. Dentro de una transacción atómica:
+ *      a. Crear PublicationRequest.
+ *      b. Crear PersonalDataAuthorization vinculada.
+ *   6. Publicar eventos de dominio.
  *
  * Errores de dominio que retorna en Result.fail:
  *   - DuplicatePublicationRequestException: solicitud duplicada detectada.
@@ -16,7 +18,7 @@
  * → CAPA: Use Cases (Uncle Bob)
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 
@@ -31,6 +33,7 @@ import {
   EVENT_BUS,
   EventBus,
 } from '../../../../../shared-kernel/infrastructure/event-bus/event-bus.port';
+import { PrismaService } from '../../../../../shared-kernel/infrastructure/prisma/prisma.service';
 
 import {
   CreatePublicationRequestInput,
@@ -44,6 +47,10 @@ import { PublicationRequestOfferType } from '../../../domain/value-objects/publi
 import { ReferenceNumber } from '../../../domain/value-objects/reference-number.value-object';
 import { CAPTCHA_VERIFIER, CaptchaVerifierPort } from '../../ports/output/captcha-verifier.port';
 import {
+  PERSONAL_DATA_AUTHORIZATION_REPOSITORY,
+  PersonalDataAuthorizationRepositoryPort,
+} from '../../ports/output/personal-data-authorization.repository.port';
+import {
   PUBLICATION_REQUEST_REPOSITORY,
   PublicationRequestRepositoryPort,
 } from '../../ports/output/publication-request.repository.port';
@@ -52,15 +59,24 @@ import { SubmitPublicationRequestInput } from './dtos/submit-publication-request
 import { SubmitPublicationRequestOutput } from './dtos/submit-publication-request-output.dto';
 import { SubmitPublicationRequestInputPort } from './dtos/submit-publication-request.input-port';
 
+const PRIVACY_NOTICE_VERSION = '1.0.0';
+const AUTHORIZED_PURPOSES =
+  'Evaluación de solicitud de publicación de inmueble, contacto comercial por parte de asesores de Inmuebles El Guarzo, y gestión del proceso de captación inmobiliaria conforme a la política de privacidad versión 1.0.0.';
+const DEFAULT_DOCUMENT_TYPE = 'NO_ESPECIFICADO';
+const DEFAULT_DOCUMENT_NUMBER = 'NO_ESPECIFICADO';
+
 @Injectable()
 export class SubmitPublicationRequestInteractor implements SubmitPublicationRequestInputPort {
   public constructor(
     @Inject(PUBLICATION_REQUEST_REPOSITORY)
     private readonly repo: PublicationRequestRepositoryPort,
+    @Inject(PERSONAL_DATA_AUTHORIZATION_REPOSITORY)
+    private readonly personalDataRepo: PersonalDataAuthorizationRepositoryPort,
     @Inject(EVENT_BUS)
     private readonly eventBus: EventBus,
     @Inject(CAPTCHA_VERIFIER)
     private readonly captchaVerifier: CaptchaVerifierPort,
+    private readonly prisma: PrismaService,
   ) {}
 
   public async execute(
@@ -87,7 +103,7 @@ export class SubmitPublicationRequestInteractor implements SubmitPublicationRequ
     const year = new Date().getFullYear();
     const sequence = await this.repo.nextReferenceNumber(year);
 
-    // Paso 4 — crear agregado y persistir
+    // Paso 4 — construir agregado
     const createInput = SubmitPublicationRequestInteractor.buildCreateInput(
       input,
       year,
@@ -95,7 +111,28 @@ export class SubmitPublicationRequestInteractor implements SubmitPublicationRequ
       dedupHash,
     );
     const request = PublicationRequest.submit(createInput);
-    await this.repo.save(request);
+
+    // Paso 5 — persistir ambas entidades en una transacción atómica
+    await this.prisma.$transaction(async (tx) => {
+      await this.repo.save(request, tx);
+      await this.personalDataRepo.save(
+        {
+          id: randomUUID(),
+          subjectType: 'PUBLICATION_REQUEST',
+          subjectId: request.id.value,
+          titularFullName: input.ownerFullName,
+          titularDocumentType: input.ownerDocumentType ?? DEFAULT_DOCUMENT_TYPE,
+          titularDocumentNumber: input.ownerDocumentNumber ?? DEFAULT_DOCUMENT_NUMBER,
+          authorizedPurposes: AUTHORIZED_PURPOSES,
+          privacyNoticeVersion: PRIVACY_NOTICE_VERSION,
+          consentIp: input.submittedFromIp,
+          consentUserAgent: input.submittedFromUserAgent,
+        },
+        tx,
+      );
+    });
+
+    // Paso 6 — publicar eventos de dominio
     const events = request.pullDomainEvents();
     await this.eventBus.publish(events);
 
