@@ -27,6 +27,12 @@ export class KongGatewayGuard implements CanActivate {
 
   public canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
+
+    // Permitir health check de Render sin verificación
+    if (request.path === '/api/v1/health') {
+      return true;
+    }
+
     const secret = request.headers['x-kong-secret'];
 
     if (!secret || secret !== this.kongSecret) {
