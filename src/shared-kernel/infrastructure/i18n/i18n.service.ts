@@ -18,9 +18,18 @@ export class I18nService implements OnModuleInit {
   private readonly logger = new Logger(I18nService.name);
 
   public async onModuleInit(): Promise<void> {
-    const esEmails = JSON.parse(
-      readFileSync(join(__dirname, 'locales', 'es', 'emails.json'), 'utf-8'),
-    ) as Record<string, unknown>;
+    const emailsPath = join(
+      process.cwd(),
+      'dist',
+      'shared-kernel',
+      'infrastructure',
+      'i18n',
+      'locales',
+      'es',
+      'emails.json',
+    );
+
+    const esEmails = JSON.parse(readFileSync(emailsPath, 'utf-8')) as Record<string, unknown>;
 
     await i18next.init({
       lng: 'es',
@@ -37,7 +46,6 @@ export class I18nService implements OnModuleInit {
 
     this.logger.log('i18n initialized with es locale');
   }
-
   public t(namespace: string, key: string, variables?: Record<string, string>): string {
     return i18next.t(`${namespace}:${key}`, variables ?? {});
   }
