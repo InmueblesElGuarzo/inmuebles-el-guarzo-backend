@@ -46,7 +46,6 @@ export class I18nService implements OnModuleInit {
 
     this.logger.log('i18n initialized with es locale');
   }
-
   public t(namespace: string, key: string, variables?: Record<string, string>): string {
     return i18next.t(`${namespace}:${key}`, variables ?? {});
   }
