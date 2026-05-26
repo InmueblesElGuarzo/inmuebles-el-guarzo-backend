@@ -12,12 +12,12 @@ import { Inject, Module, OnModuleInit } from '@nestjs/common';
 import { EVENT_BUS, EventBus } from '../../shared-kernel/infrastructure/event-bus/event-bus.port';
 import { OnPublicationRequestApprovedHandler } from './application/event-handlers/on-publication-request-approved.handler';
 import { OnPublicationRequestRejectedHandler } from './application/event-handlers/on-publication-request-rejected.handler';
-import { EMAIL_SENDER } from './application/ports/output/email-sender.port';
-import { ResendEmailSenderAdapter } from './infrastructure/resend/resend-email-sender.adapter';
+import { NOTIFICATION_CATALOG } from './application/ports/output/notification-catalog.port';
+import { NovuNotificationCatalogAdapter } from './infrastructure/novu/novu-notification-catalog.adapter';
 
 @Module({
   providers: [
-    { provide: EMAIL_SENDER, useClass: ResendEmailSenderAdapter },
+    { provide: NOTIFICATION_CATALOG, useClass: NovuNotificationCatalogAdapter },
     OnPublicationRequestApprovedHandler,
     OnPublicationRequestRejectedHandler,
   ],

@@ -1,0 +1,17 @@
+{
+  "approval": {
+    "subject": "Tu solicitud ha sido aprobada — Inmuebles El Guarzo",
+    "greeting": "¡Buenas noticias, {{ownerFullName}}!",
+    "body": "Tu solicitud de captación con número de referencia <strong>{{referenceNumber}}</strong> ha sido <strong style=\"color:#1a7a4a;\">aprobada</strong>.",
+    "nextSteps": "Pronto uno de nuestros asesores se pondrá en contacto contigo para coordinar los próximos pasos.",
+    "footer": "Inmuebles El Guarzo\nEmail: contacto@inmuebleselguarzo.com\nTeléfono: +57 300 000 0000"
+  },
+  "rejection": {
+    "subject": "Actualización sobre tu solicitud — Inmuebles El Guarzo",
+    "greeting": "Hola, {{ownerFullName}}",
+    "body": "Lamentamos informarte que tu solicitud con número de referencia <strong>{{referenceNumber}}</strong> no fue aprobada en esta ocasión.",
+    "motive": "<strong>Motivo:</strong> {{motive}}",
+    "encouragement": "Si lo deseas, puedes enviar una nueva solicitud en el futuro. Estaremos encantados de revisarla.",
+    "footer": "Inmuebles El Guarzo\nEmail: contacto@inmuebleselguarzo.com\nTeléfono: +57 300 000 0000"
+  }
+}

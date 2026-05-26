@@ -4,6 +4,12 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "deleteOutDir": true,
-    "webpack": true
+    "webpack": true,
+    "assets": [
+      {
+        "include": "shared-kernel/infrastructure/i18n/locales/**/*.json",
+        "watchAssets": true
+      }
+    ]
   }
 }
