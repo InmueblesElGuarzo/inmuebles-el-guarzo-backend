@@ -41,6 +41,7 @@ export class NovuNotificationCatalogAdapter implements NotificationCatalogPort {
       await this.novu.trigger(params.workflowId, {
         to: {
           subscriberId: params.subscriberId,
+          email: params.subscriberId,
         },
         payload: params.payload,
       });
