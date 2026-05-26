@@ -50,8 +50,8 @@ export class UnleashService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  public async onModuleDestroy(): Promise<void> {
-    await this.client.destroy();
+  public onModuleDestroy(): void {
+    this.client.destroy();
   }
 
   public isEnabled(flagName: string): boolean {
