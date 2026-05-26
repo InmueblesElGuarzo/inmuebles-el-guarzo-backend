@@ -87,4 +87,20 @@ export class EnvSchema {
   @IsString()
   @IsNotEmpty()
   UPSTASH_REDIS_REST_TOKEN!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  UNLEASH_API_URL!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  UNLEASH_API_TOKEN!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  NOVU_API_KEY!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  NOVU_APP_ID!: string;
 }
