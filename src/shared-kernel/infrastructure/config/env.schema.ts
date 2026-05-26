@@ -103,4 +103,8 @@ export class EnvSchema {
   @IsString()
   @IsNotEmpty()
   NOVU_APP_ID!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  KONG_SECRET!: string;
 }

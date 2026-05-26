@@ -72,7 +72,7 @@ export class SubmitPublicationRequestHttpDto {
   @ApiPropertyOptional({ example: 85, minimum: 1, maximum: 100000 })
   @IsOptional()
   @IsNumber()
-  @Min(1)
+  @Min(36)
   @Max(100000)
   public proposedAreaM2?: number;
 
