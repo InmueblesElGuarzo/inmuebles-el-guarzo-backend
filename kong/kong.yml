@@ -17,7 +17,7 @@ services:
               - X-Kong-Secret:xZFEGnEMgAREqh6krTBZ2DM3lpITq9YBy4V1qOIRBlw=
       - name: rate-limiting
         config:
-          minute: 5
+          minute: 60
           hour: 1000
           policy: local
           redis:
