@@ -14,7 +14,7 @@ services:
         config:
           add:
             headers:
-              - X-Kong-Secret:xZFEGnEMgAREqh6krTBZ2DM3lpITq9YBy4V1qOIRBlw=
+              - X-Kong-Secret:KONG_SECRET_PLACEHOLDER
       - name: rate-limiting
         config:
           minute: 60
