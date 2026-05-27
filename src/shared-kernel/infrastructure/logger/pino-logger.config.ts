@@ -4,10 +4,15 @@
  * En desarrollo: logs formateados con pino-pretty (legibles en consola).
  * En producción: logs enviados a BetterStack via @logtail/pino transport.
  *
+ * El X-Correlation-ID generado por Kong se propaga como correlationId
+ * en cada log para permitir trazabilidad distribuida entre Kong,
+ * el backend y BetterStack.
+ *
  * → CAPA: Infrastructure (Uncle Bob)
  */
 
 import { Params } from 'nestjs-pino';
+import { IncomingMessage } from 'node:http';
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 
@@ -38,8 +43,17 @@ export const pinoLoggerConfig: Params = {
   pinoHttp: {
     level: isDevelopment ? 'debug' : 'info',
     transport: resolveTransport(),
-    customProps: () => ({
+    genReqId: (req: IncomingMessage): string => {
+      const correlationId = req.headers['x-correlation-id'];
+      if (typeof correlationId === 'string' && correlationId.length > 0) {
+        return correlationId;
+      }
+      return `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    },
+    customProps: (req: IncomingMessage) => ({
       environment: process.env.NODE_ENV ?? 'development',
+      correlationId: req.headers['x-correlation-id'] ?? 'no-correlation-id',
+      kongRequestId: req.headers['x-kong-request-id'] ?? 'no-kong-request-id',
     }),
     redact: {
       paths: [
