@@ -42,13 +42,16 @@ const resolveTransport = (): { target: string; options: Record<string, unknown> 
 export const pinoLoggerConfig: Params = {
   pinoHttp: {
     level: isDevelopment ? 'debug' : 'info',
+    autoLogging: {
+      ignore: (req: IncomingMessage): boolean => req.url === '/api/v1/health',
+    },
     transport: resolveTransport(),
     genReqId: (req: IncomingMessage): string => {
       const correlationId = req.headers['x-correlation-id'];
       if (typeof correlationId === 'string' && correlationId.length > 0) {
         return correlationId;
       }
-      return `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      return `local-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
     },
     customProps: (req: IncomingMessage) => ({
       environment: process.env.NODE_ENV ?? 'development',
