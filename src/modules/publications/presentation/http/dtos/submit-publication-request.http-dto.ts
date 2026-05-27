@@ -20,6 +20,7 @@ export class SubmitPublicationRequestHttpDto {
   @ApiProperty({ example: 'Juan Carlos Pérez Gómez', maxLength: 200 })
   @IsString()
   @IsNotEmpty()
+  @MinLength(5)
   @MaxLength(200)
   public ownerFullName!: string;
 
@@ -30,6 +31,7 @@ export class SubmitPublicationRequestHttpDto {
   @ApiProperty({ example: '+57 300 123 4567', maxLength: 50 })
   @IsString()
   @IsNotEmpty()
+  @MinLength(7)
   @MaxLength(50)
   @Matches(/^[+\d\s\-()]+$/)
   public ownerPhonePrimary!: string;
@@ -37,6 +39,7 @@ export class SubmitPublicationRequestHttpDto {
   @ApiPropertyOptional({ example: '+57 301 987 6543', maxLength: 50 })
   @IsOptional()
   @IsString()
+  @MinLength(7)
   @MaxLength(50)
   @Matches(/^[+\d\s\-()]+$/)
   public ownerPhoneSecondary?: string;
@@ -51,7 +54,11 @@ export class SubmitPublicationRequestHttpDto {
   @ApiPropertyOptional({ example: '1234567890', maxLength: 40 })
   @IsOptional()
   @IsString()
+  @MinLength(4)
   @MaxLength(40)
+  @Matches(/^[a-zA-Z0-9-]+$/, {
+    message: 'El número de documento solo puede contener letras, números y guiones.',
+  })
   public ownerDocumentNumber?: string;
 
   @ApiPropertyOptional({ format: 'uuid' })
@@ -66,10 +73,11 @@ export class SubmitPublicationRequestHttpDto {
   @ApiProperty({ example: 'Barrio El Poblado, Medellín, Antioquia', maxLength: 300 })
   @IsString()
   @IsNotEmpty()
+  @MinLength(10)
   @MaxLength(300)
   public proposedLocation!: string;
 
-  @ApiPropertyOptional({ example: 85, minimum: 1, maximum: 100000 })
+  @ApiPropertyOptional({ example: 85, minimum: 36, maximum: 100000 })
   @IsOptional()
   @IsNumber()
   @Min(36)
