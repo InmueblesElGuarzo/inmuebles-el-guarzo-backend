@@ -11,7 +11,7 @@
  * → CAPA: Frameworks & Drivers (Uncle Bob)
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 
 import { Maybe } from '../../../../../shared-kernel/domain/maybe';
@@ -28,6 +28,8 @@ import { PublicationRequestMapper } from './mappers/publication-request.mapper';
 
 @Injectable()
 export class PublicationRequestPrismaRepositoryAdapter implements PublicationRequestRepositoryPort {
+  private readonly logger = new Logger(PublicationRequestPrismaRepositoryAdapter.name);
+
   public constructor(private readonly prisma: PrismaService) {}
 
   public async findById(id: UniqueId, tx?: TransactionContext): Promise<Maybe<PublicationRequest>> {
@@ -74,7 +76,15 @@ export class PublicationRequestPrismaRepositoryAdapter implements PublicationReq
       take: limit,
     });
     const total = await client.publicationRequest.count({ where });
-    return [items.map((m) => PublicationRequestMapper.toDomain(m)), total];
+    const mapped = items.reduce<PublicationRequest[]>((acc, m) => {
+      try {
+        acc.push(PublicationRequestMapper.toDomain(m));
+      } catch {
+        this.logger.warn(`Skipping invalid publication request ${m.id}: failed domain mapping`);
+      }
+      return acc;
+    }, []);
+    return [mapped, total];
   }
 
   public async nextReferenceNumber(year: number, tx?: TransactionContext): Promise<number> {
