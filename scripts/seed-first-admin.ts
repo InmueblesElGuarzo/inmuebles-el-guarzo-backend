@@ -11,7 +11,7 @@
  *
  * Uso:
  *   1. Setear en .env (temporal, solo para el seed):
- *        SEED_ADMIN_EMAIL="tu@inmuebleselguarzo.com"
+ *        SEED_ADMIN_EMAIL="tu@inmuebleselguarzo.com.co"
  *        SEED_ADMIN_FULL_NAME="Tu Nombre Completo"
  *        SEED_ADMIN_PHONE="3001234567"   (opcional)
  *   2. Ejecutar:  pnpm seed:admin

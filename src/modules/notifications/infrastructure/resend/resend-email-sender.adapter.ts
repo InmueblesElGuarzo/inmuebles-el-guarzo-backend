@@ -15,16 +15,16 @@ import { Resend } from 'resend';
 import { EnvSchema } from '../../../../shared-kernel/infrastructure/config/env.schema';
 import { EmailSenderPort, SendEmailParams } from '../../application/ports/output/email-sender.port';
 
-const FROM_ADDRESS = 'Inmuebles El Guarzo <noreply@inmuebleselguarzo.com>';
-
 @Injectable()
 export class ResendEmailSenderAdapter implements EmailSenderPort {
   private readonly logger = new Logger(ResendEmailSenderAdapter.name);
   private readonly resend: Resend;
   private readonly apiKey: string | undefined;
+  private readonly fromAddress: string;
 
   public constructor(configService: ConfigService<EnvSchema, true>) {
     this.apiKey = configService.get('RESEND_API_KEY', { infer: true });
+    this.fromAddress = configService.get('RESEND_FROM_ADDRESS', { infer: true });
     this.resend = new Resend(this.apiKey);
   }
 
@@ -36,7 +36,7 @@ export class ResendEmailSenderAdapter implements EmailSenderPort {
 
     try {
       const { error } = await this.resend.emails.send({
-        from: FROM_ADDRESS,
+        from: this.fromAddress,
         to: params.to,
         subject: params.subject,
         html: params.html,
