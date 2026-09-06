@@ -14,7 +14,7 @@
  *   - Offer (con su historial de transiciones de estado)
  *   - PublicationRequest
  *
- * → CAPA: Entities (Uncle Bob)
+ * → CAPA: Entities (Uncle Bob) commit de pruebaaaaaaa
  */
 
 import { DomainEvent } from './domain-event.base';
