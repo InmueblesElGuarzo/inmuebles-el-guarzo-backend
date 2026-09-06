@@ -25,6 +25,13 @@ export class EnvSchema {
   @IsIn(['development', 'test', 'production'])
   NODE_ENV!: 'development' | 'test' | 'production';
 
+  // Origenes permitidos por CORS, separados por coma. main.ts la parsea a
+  // un array. Determina que frontends pueden llamar a la API con
+  // credenciales, por eso vive aqui y no hardcodeada.
+  @IsString()
+  @IsNotEmpty()
+  CORS_ALLOWED_ORIGINS!: string;
+
   // Conexion a Postgres (Neon en este proyecto). Prisma la consume
   // automaticamente via `env("DATABASE_URL")` en el schema.
   @IsString()
@@ -79,6 +86,14 @@ export class EnvSchema {
   @IsString()
   @IsNotEmpty()
   RESEND_API_KEY?: string;
+
+  // Direccion "From" con la que Resend envia los correos transaccionales.
+  // Debe ser un dominio verificado en Resend. Requerida: sin remitente
+  // valido no se puede enviar correo, y no queremos un fallback silencioso
+  // a un dominio equivocado.
+  @IsString()
+  @IsNotEmpty()
+  RESEND_FROM_ADDRESS!: string;
 
   @IsString()
   @IsNotEmpty()
