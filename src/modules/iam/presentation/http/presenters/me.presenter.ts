@@ -12,7 +12,7 @@ export class MeHttpResponse {
   @ApiProperty({ format: 'uuid' })
   public id!: string;
 
-  @ApiProperty({ example: 'admin@inmuebleselguarzo.com' })
+  @ApiProperty({ example: 'admin@inmuebleselguarzo.com.co' })
   public email!: string;
 
   @ApiProperty({ example: 'Juan Carlos Pérez' })
