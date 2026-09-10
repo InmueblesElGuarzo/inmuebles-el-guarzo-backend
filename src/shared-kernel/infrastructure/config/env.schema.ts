@@ -105,14 +105,6 @@ export class EnvSchema {
 
   @IsString()
   @IsNotEmpty()
-  UNLEASH_API_URL!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  UNLEASH_API_TOKEN!: string;
-
-  @IsString()
-  @IsNotEmpty()
   NOVU_API_KEY!: string;
 
   @IsString()

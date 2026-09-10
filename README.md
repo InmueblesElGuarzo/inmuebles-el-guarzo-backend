@@ -1047,7 +1047,6 @@ versión actual del proyecto.
 | `@upstash/redis`     | Cliente para Upstash Redis. Necesario para implementar caché distribuida y soporte de rate limiting a nivel de aplicación.                        |
 | `novu SDK`           | SDK de Novu para la orquestación de notificaciones multicanal y gestión de plantillas de comunicación.                                            |
 | `resend ^4`          | SDK de Resend para el envío de correos electrónicos transaccionales (confirmaciones, verificaciones y notificaciones al propietario).             |
-| `unleash-client`     | Cliente del servicio Unleash para la gestión de feature flags en tiempo de ejecución sin necesidad de redespliegue.                               |
 | `@aws-sdk/client-s3` | SDK de AWS S3 utilizado para conectar con Cloudflare R2, que expone una API compatible con S3 para el almacenamiento de fotografías de inmuebles. |
 
 ---
