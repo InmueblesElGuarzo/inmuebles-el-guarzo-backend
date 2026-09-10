@@ -98,10 +98,8 @@ C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\domain\aggregates\.
 C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\domain\exceptions\.gitkeep                                                            
 C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\domain\value-objects\.gitkeep                                                         
 C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\infrastructure\persistence                                                            
-C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\infrastructure\unleash                                                                
 C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\infrastructure\persistence\mappers                                                    
 C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\infrastructure\persistence\mappers\.gitkeep                                           
-C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\infrastructure\unleash\.gitkeep                                                       
 C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\presentation\http                                                                     
 C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\presentation\http\controllers                                                         
 C:\dev\inmuebles-el-guarzo-backend\src\modules\configuration\presentation\http\dtos                                                                
