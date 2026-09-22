@@ -1,0 +1,11 @@
+services:
+  kong:
+    build:
+      context: ./kong
+      dockerfile: Dockerfile.local
+    ports:
+      - '8000:8000'
+    environment:
+      KONG_SECRET: ${KONG_SECRET}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
