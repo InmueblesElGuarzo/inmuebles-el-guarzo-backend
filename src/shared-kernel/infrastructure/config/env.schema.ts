@@ -114,4 +114,8 @@ export class EnvSchema {
   @IsString()
   @IsNotEmpty()
   KONG_SECRET!: string;
+
+  @IsOptional()
+  @IsString()
+  BETTERSTACK_INGESTING_HOST?: string;
 }
