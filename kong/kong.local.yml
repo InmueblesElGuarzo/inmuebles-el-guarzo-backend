@@ -1,0 +1,41 @@
+_format_version: '3.0'
+_transform: true
+
+services:
+  - name: inmuebles-el-guarzo-backend
+    url: http://host.docker.internal:3000
+    routes:
+      - name: all-routes
+        paths:
+          - /
+        strip_path: false
+    plugins:
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - X-Kong-Secret:KONG_SECRET_PLACEHOLDER
+      - name: rate-limiting
+        config:
+          minute: 60
+          hour: 1000
+          policy: local
+          redis:
+            host: localhost
+            port: 6379
+            timeout: 2000
+            database: 0
+            ssl: false
+            ssl_verify: false
+      - name: correlation-id
+        config:
+          header_name: X-Correlation-ID
+          generator: uuid
+          echo_downstream: true
+
+plugins:
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - X-Powered-By:Kong-Gateway
