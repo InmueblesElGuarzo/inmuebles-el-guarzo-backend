@@ -3,7 +3,7 @@ _transform: true
 
 services:
   - name: inmuebles-el-guarzo-backend
-    url: http://inmuebles-el-guarzo-backend-7wli:10000
+    url: https://inmuebles-el-guarzo-backend-a1zk.onrender.com
     routes:
       - name: all-routes
         paths:
