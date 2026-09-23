@@ -1,4 +1,6 @@
-allowBuilds:
-  '@prisma/client': false
-  '@prisma/engines': true
-  prisma: true
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - prisma
+  - '@nestjs/core'
+  - esbuild
+  - unrs-resolver
