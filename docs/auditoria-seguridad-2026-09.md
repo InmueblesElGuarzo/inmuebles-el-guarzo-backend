@@ -13,7 +13,7 @@
 | H-01 | El backend puede ser accesible directamente sin pasar por Kong; la única defensa es un secreto estático compartido | **Crítico (verificar)** | Gateway / red |
 | H-02 | El rate limiting de Kong no identifica al cliente real (IP detrás de Cloudflare + Render) → o es inefectivo o causa auto-DoS | **Alto** | Rate limiting |
 | H-03 | No hay límite específico para el formulario público de captación; 60 req/min es demasiado permisivo para ese endpoint | **Alto** | Rate limiting |
-| H-04 | Verificación de Turnstile "fail-open": si falta la clave, `verify()` devuelve `true` | **Alto** | Anti-bot |
+| H-04 | Verificación de Turnstile "fail-open": si falta la clave, `verify()` devuelve `true`. **Parcialmente resuelto:** ya falla cerrado; pendiente `remoteip` y validar `hostname`/`action` | **Alto** | Anti-bot |
 | H-05 | Swagger UI (`/api/docs`, `/api/docs-json`) expuesto sin autenticación y sin pasar por los guards | **Medio** | Exposición |
 | H-06 | `KongGatewayGuard`: comparación de secreto no constante en tiempo + `/health` exento sin throttle | **Medio** | Gateway |
 | H-07 | CORS: `origin.endsWith('.vercel.app')` + `credentials: true` permite exfiltración desde cualquier subdominio `*.vercel.app` | **Medio** | CORS |
@@ -79,7 +79,7 @@ Configuración actual ([kong.yml:18-29](../kong/kong.yml#L18-L29)):
    - **todos los usuarios comparten un mismo bucket** → un solo abusador (o tráfico orgánico en hora pico) agota los 60/min **para todos** = auto-DoS; o
    - la IP varía de forma no controlada y el límite es inefectivo.
 
-3. **Límite único y global.** El plugin está en el `service`, con una sola ruta `all-routes` (`paths: [/]`). `minute: 60` aplica a **toda** la API combinada. No hay límite estricto para el endpoint sensible `POST /api/v1/publications` (formulario público de captación). 60 req/min = hasta ~1000 solicitudes de spam/hora por origen — Turnstile es la barrera real, pero es "fail-open" (H-04) y no está atada a `action`/`hostname`.
+3. **Límite único y global.** El plugin está en el `service`, con una sola ruta `all-routes` (`paths: [/]`). `minute: 60` aplica a **toda** la API combinada. No hay límite estricto para el endpoint sensible `POST /api/v1/publications` (formulario público de captación). 60 req/min = hasta ~1000 solicitudes de spam/hora por origen — Turnstile es la barrera real; ya falla cerrado (H-04), pero no está atada a `action`/`hostname`.
 
 **Recomendación (H-02 + H-03):**
 
@@ -175,9 +175,9 @@ Cloudflare (plan Free) permite **1 regla de rate limiting** — úsala como prim
 
 ## 3. Parte B — Vulnerabilidades en el backend
 
-### H-04 — Turnstile "fail-open" (Alto)
+### H-04 — Turnstile "fail-open" (Alto) — parcialmente resuelto
 
-[turnstile-captcha-verifier.adapter.ts:30-33](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L30-L33):
+**Hallazgo original.** Si faltaba `TURNSTILE_SECRET_KEY`, `verify()` logueaba un warning y devolvía `true`, aceptando cualquier token:
 
 ```ts
 if (!this.secretKey) {
@@ -186,15 +186,21 @@ if (!this.secretKey) {
 }
 ```
 
-Mitigado hoy porque `TURNSTILE_SECRET_KEY` es `@IsNotEmpty()` en `EnvSchema` y la app no arranca sin ella. Pero el diseño "en caso de duda, dejar pasar" es peligroso: un error de configuración en producción desactiva silenciosamente el anti-bot del formulario público.
+La rama era inalcanzable porque `TURNSTILE_SECRET_KEY` es `@IsNotEmpty()` en `EnvSchema` y la app no arranca sin ella, pero el diseño "en caso de duda, dejar pasar" era peligroso: un cambio del esquema o un error de configuración desactivaba en silencio el anti-bot del formulario público.
 
-**Además:** no se envía `remoteip` ni se validan los campos `hostname` / `action` de la respuesta de Cloudflare ([turnstile-captcha-verifier.adapter.ts:36-47](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L36-L47)). Un token válido obtenido en otro sitio del mismo dominio se puede reutilizar.
+**Resuelto (rama `fix/turnstile-fail-closed`).** El adapter falla cerrado, sin bypass en ningún entorno ([turnstile-captcha-verifier.adapter.ts:26-38](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L26-L38)):
+- Si la clave falta, está vacía o solo tiene espacios, el constructor lanza un `Error` y la app no arranca (fail fast). En desarrollo se usa la clave de Doppler dev.
+- Se eliminó la rama que devolvía `true`; `secretKey` se tipa como `string`.
+- Si la llamada a Cloudflare falla, `verify()` devuelve `false` y loguea el error.
+- Cubierto por tests unitarios ([turnstile-captcha-verifier.adapter.spec.ts](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.spec.ts)) con `fetch` mockeado.
 
-**Acción:**
-- `if (!this.secretKey)` → devolver `true` solo si `NODE_ENV !== 'production'`; en producción, `return false` o lanzar.
+**Pendiente.** No se envía `remoteip` ni se validan los campos `hostname` / `action` de la respuesta de Cloudflare ([turnstile-captcha-verifier.adapter.ts:40-58](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L40-L58)). Un token válido obtenido en otro sitio del mismo dominio se puede reutilizar. Estos puntos dependen de la IP real del cliente (H-11) y del frontend, y se abordarán después:
 - Añadir `remoteip` (la IP real del cliente) al cuerpo de `siteverify`.
 - Validar `data.hostname` contra el dominio esperado y `data.action` contra un valor fijo (`'publication_submit'`) que el frontend setea en el widget.
 - Validar el timestamp (`challenge_ts`) para rechazar tokens viejos.
+- Devolver `data.success === true` en lugar de `data.success`: si Cloudflare responde un JSON sin `success`, hoy se devuelve `undefined`. El interactor lo rechaza igual por ser falsy, pero el tipo `boolean` no es fiel.
+- Comprobar `response.ok` antes de confiar en el cuerpo de la respuesta.
+- Timeout en la llamada a `siteverify`.
 
 ### H-05 — Swagger expuesto en producción (Medio)
 
@@ -345,7 +351,7 @@ El esquema define `notification_outbox` para entrega confiable ([schema.prisma:7
 
 1. **(H-01)** Confirmar en Render que el backend es **Private Service** sin dominio público. Si tiene URL pública, quitarla.
 2. **(H-01)** Configurar Cloudflare → origen (Kong) con Authenticated Origin Pull o allowlist de IPs de Cloudflare.
-3. **(H-04)** Turnstile fail-**closed** en producción + enviar `remoteip` + validar `hostname`/`action`.
+3. **(H-04)** ~~Turnstile fail-**closed**~~ (hecho: sin bypass en ningún entorno) + enviar `remoteip` + validar `hostname`/`action`.
 4. **(H-05)** Deshabilitar Swagger en producción.
 5. **(H-09)** Quitar el `sed` del `entrypoint.sh`, usar `${{ env "KONG_SECRET" }}` en `kong.yml`.
 

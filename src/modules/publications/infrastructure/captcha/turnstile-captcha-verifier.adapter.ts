@@ -2,9 +2,10 @@
  * TurnstileCaptchaVerifierAdapter — Implementación del CaptchaVerifierPort
  * usando Cloudflare Turnstile.
  *
- * Si TURNSTILE_SECRET_KEY no está configurada, loguea un warning y retorna
- * true para no bloquear el flujo en desarrollo.
- * Si Cloudflare falla, loguea el error y retorna false.
+ * Falla cerrado, sin bypass en ningún entorno:
+ *  - Si TURNSTILE_SECRET_KEY falta, está vacía o solo tiene espacios, el
+ *    constructor lanza un Error y la app no arranca (fail fast).
+ *  - Si Cloudflare falla o responde error, loguea el error y retorna false.
  *
  * → CAPA: Frameworks & Drivers (Uncle Bob).
  */
@@ -20,18 +21,23 @@ const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/sit
 @Injectable()
 export class TurnstileCaptchaVerifierAdapter implements CaptchaVerifierPort {
   private readonly logger = new Logger(TurnstileCaptchaVerifierAdapter.name);
-  private readonly secretKey: string | undefined;
+  private readonly secretKey: string;
 
   public constructor(configService: ConfigService<EnvSchema, true>) {
-    this.secretKey = configService.get('TURNSTILE_SECRET_KEY', { infer: true });
+    // Tipado como opcional a propósito: en runtime puede faltar aunque
+    // EnvSchema la exija (cambio de esquema o error de configuración).
+    const secretKey: string | undefined = configService.get('TURNSTILE_SECRET_KEY', {
+      infer: true,
+    });
+    if (!secretKey?.trim()) {
+      throw new Error(
+        'TURNSTILE_SECRET_KEY no está configurada; la verificación CAPTCHA no puede operar.',
+      );
+    }
+    this.secretKey = secretKey;
   }
 
   public async verify(token: string): Promise<boolean> {
-    if (!this.secretKey) {
-      this.logger.warn('TURNSTILE_SECRET_KEY no configurada; verificación omitida.');
-      return true;
-    }
-
     try {
       const body = new URLSearchParams({
         secret: this.secretKey,
