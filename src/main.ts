@@ -3,7 +3,6 @@ import './instrument';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 
@@ -11,6 +10,7 @@ import { AppModule } from './app.module';
 import { EnvSchema } from './shared-kernel/infrastructure/config/env.schema';
 import { DomainExceptionFilter } from './shared-kernel/presentation/filters/domain-exception.filter';
 import { PrismaExceptionFilter } from './shared-kernel/presentation/filters/prisma-exception.filter';
+import { setupSwagger } from './shared-kernel/presentation/http/swagger.setup';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {
@@ -57,14 +57,7 @@ async function bootstrap(): Promise<void> {
 
   app.useGlobalFilters(new DomainExceptionFilter(), new PrismaExceptionFilter());
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Inmuebles El Guarzo API')
-    .setDescription('API del backend de Inmuebles El Guarzo v2.')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+  setupSwagger(app, configService.get('NODE_ENV', { infer: true }));
 
   const port = Number(process.env.PORT) || 3000;
   await app.listen(port);
