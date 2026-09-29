@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { EnvSchema } from './shared-kernel/infrastructure/config/env.schema';
 import { DomainExceptionFilter } from './shared-kernel/presentation/filters/domain-exception.filter';
 import { PrismaExceptionFilter } from './shared-kernel/presentation/filters/prisma-exception.filter';
+import { isOriginAllowed } from './shared-kernel/presentation/http/cors-origin';
 import { setupSwagger } from './shared-kernel/presentation/http/swagger.setup';
 
 async function bootstrap(): Promise<void> {
@@ -33,7 +34,7 @@ async function bootstrap(): Promise<void> {
       origin: string | undefined,
       callback: (err: Error | null, allow?: boolean) => void,
     ) => {
-      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      if (isOriginAllowed(origin, allowedOrigins)) {
         callback(null, true);
       } else {
         callback(new Error('Not allowed by CORS'));

@@ -3,6 +3,7 @@
 **Fecha:** 2026-09-06
 **Alcance:** API Gateway (Kong), backend NestJS, configuración de despliegue, manejo de datos personales.
 **Método:** revisión estática de código y configuración. No se ejecutaron pruebas dinámicas (DAST) ni se validó la configuración real de Render/Cloudflare/Doppler — los puntos que dependen de eso están marcados como **(verificar en infraestructura)**.
+**Última revisión contra el código:** 2026-09-28 (rama `develop` en `28f31a8` + corrección de H-06). Estados, referencias de línea y fragmentos citados reflejan el código a esa fecha. Los informes de [zap-reports/](../zap-reports/) (mayo 2026) escanean el frontend (`www.inmuebleselguarzo.com`), no el backend, y no sirven como evidencia de ningún hallazgo de este documento.
 
 ---
 
@@ -10,16 +11,16 @@
 
 | # | Hallazgo | Severidad | Área |
 |---|----------|-----------|------|
-| H-01 | El backend puede ser accesible directamente sin pasar por Kong; la única defensa es un secreto estático compartido | **Crítico (verificar)** | Gateway / red |
+| H-01 | El backend puede ser accesible directamente sin pasar por Kong; la única defensa es un secreto estático compartido. **Verificado y mitigado:** el backend tiene URL pública en Render, pero `KongGatewayGuard` rechaza con 403 todo acceso que no llegue por Kong (salvo `/api/v1/health`); riesgo residual si se filtra `KONG_SECRET` | **Medio (residual)** — antes Crítico | Gateway / red |
 | H-02 | El rate limiting de Kong no identifica al cliente real (IP detrás de Cloudflare + Render) → o es inefectivo o causa auto-DoS | **Alto** | Rate limiting |
 | H-03 | No hay límite específico para el formulario público de captación; 60 req/min es demasiado permisivo para ese endpoint | **Alto** | Rate limiting |
 | H-04 | Verificación de Turnstile "fail-open": si falta la clave, `verify()` devuelve `true`. **Parcialmente resuelto:** ya falla cerrado; pendiente `remoteip` y validar `hostname`/`action` | **Alto** | Anti-bot |
-| H-05 | Swagger UI (`/api/docs`, `/api/docs-json`) expuesto sin autenticación y sin pasar por los guards | **Medio** | Exposición |
-| H-06 | `KongGatewayGuard`: comparación de secreto no constante en tiempo + `/health` exento sin throttle | **Medio** | Gateway |
-| H-07 | CORS: `origin.endsWith('.vercel.app')` + `credentials: true` permite exfiltración desde cualquier subdominio `*.vercel.app` | **Medio** | CORS |
+| H-05 | Swagger UI (`/api/docs`, `/api/docs-json`) expuesto sin autenticación y sin pasar por los guards. **Resuelto:** no se registra cuando `NODE_ENV` es `production` | **Medio** | Exposición |
+| H-06 | `KongGatewayGuard`: comparación de secreto no constante en tiempo + `/health` exento sin throttle. **Resuelto:** comparación con `timingSafeEqual` y header normalizado; `/health` sigue exento por diseño (ver H-01) | **Medio** | Gateway |
+| H-07 | CORS: `origin.endsWith('.vercel.app')` + `credentials: true` permite llamar a la API desde cualquier subdominio `*.vercel.app`. **Parcialmente resuelto (PR #87):** patrón anclado al proyecto y team de Vercel; pendiente decidir `!origin` | **Medio** | CORS |
 | H-08 | XSS almacenado latente: `ownerFullName` y `proposedLocation` no se sanitizan; plantillas de email con `escapeValue: false` | **Medio** | XSS |
 | H-09 | `entrypoint.sh` inyecta `KONG_SECRET` con `sed` sin escapar → rompe o corrompe la config si el secreto tiene `/ & \n` | **Medio** | Gateway / build |
-| H-10 | Fuga de detalle interno en respuestas de error (nombres de columnas de BD en `P2002`) | **Bajo** | Info disclosure |
+| H-10 | Fuga de detalle interno en respuestas de error (nombres de columnas de BD en `P2002`; motivo interno de rechazo del JWT en `IAM.INVALID_AUTH_TOKEN`) | **Bajo** | Info disclosure |
 | H-11 | Sin `trust proxy` en Express → `req.ip` guarda la IP del proxy, no la del cliente (afecta trazabilidad Ley 1581 y cualquier rate limit por IP) | **Bajo-Medio** | Trazabilidad |
 | H-12 | Helmet sin configurar (CSP por defecto, sin `Cross-Origin-Resource-Policy` explícito, headers de versión de Kong visibles) | **Bajo** | Headers |
 | H-13 | Rate limiting a nivel de aplicación inexistente pese a estar listado como restricción de seguridad (README §3.6) y tener Redis conectado | **Medio** | Defensa en profundidad |
@@ -31,27 +32,34 @@
 
 ## 2. Parte A — Kong / API Gateway
 
-Archivos revisados: [kong/kong.yml](../kong/kong.yml), [kong/Dockerfile](../kong/Dockerfile), [kong/entrypoint.sh](../kong/entrypoint.sh), [src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts).
+Archivos revisados: [kong/kong.yml](../kong/kong.yml), [kong/Dockerfile](../kong/Dockerfile), [kong/entrypoint.sh](../kong/entrypoint.sh), [kong/kong.local.yml](../kong/kong.local.yml) + [kong/Dockerfile.local](../kong/Dockerfile.local) (entorno local, replican la config de producción salvo la URL del upstream), [src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts).
 
-### A.1 ¿Está *todo* pasando por Kong?
+### A.1 ¿Está *todo* pasando por Kong? (H-01)
 
 **Arquitectura declarada:** Cliente → Cloudflare (WAF/CDN) → Kong (servicio en Render) → Backend (servicio en Render).
 
-**Lo que el código garantiza:**
+**Arquitectura real según el código (2026-09-28):** Kong ya no llega al backend por la red privada de Render. Desde el PR #81 (`fdbd6a0`) el upstream de [kong.yml:6](../kong/kong.yml#L6) es la **URL pública** `https://inmuebles-el-guarzo-backend-a1zk.onrender.com`; antes era la interna `http://inmuebles-el-guarzo-backend-7wli:10000`. El backend es, por tanto, alcanzable desde Internet, y el tramo Kong → backend viaja por Internet protegido por TLS.
 
-- `KongGatewayGuard` está registrado como `APP_GUARD` global y **es el primer guard** ([app.module.ts:37-40](../src/app.module.ts#L37-L40)), antes del `JwtAuthGuard`. Rechaza con 403 cualquier request cuyo header `X-Kong-Secret` no coincida con `KONG_SECRET`.
+**Estado de H-01: verificado y mitigado a nivel de aplicación.** Se verificó que el backend no se puede usar sin pasar antes por Kong: una petición directa a la URL de Render sin el `X-Kong-Secret` correcto recibe 403. Lo que lo garantiza en el código:
+
+- `KongGatewayGuard` está registrado como `APP_GUARD` global y **es el primer guard** ([app.module.ts:37-40](../src/app.module.ts#L37-L40)), antes del `JwtAuthGuard`, así que corre en **todas** las rutas de controladores, incluidas las `@Public()`.
+- Falla cerrado ([kong-gateway.guard.ts:39-47](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts#L39-L47)): header ausente, vacío, duplicado (`string[]`) o distinto de `KONG_SECRET` → `ForbiddenException` (403). La comparación es en tiempo constante (H-06, resuelto).
+- `KONG_SECRET` es obligatorio (`@IsString() @IsNotEmpty()` en [env.schema.ts:114-116](../src/shared-kernel/infrastructure/config/env.schema.ts#L114-L116)): la app no arranca sin él, así que no existe un modo "sin secreto".
 - Kong añade ese header a todo lo que proxya (`request-transformer`, [kong.yml:13-17](../kong/kong.yml#L13-L17)).
+- El secreto no llega a los logs: el serializer de `pino-http` solo registra `id`, `method` y `url` de la petición, sin headers ([pino-logger.config.ts:73-78](../src/shared-kernel/infrastructure/logger/pino-logger.config.ts#L73-L78)).
+- Cubierto por [kong-gateway.guard.spec.ts](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.spec.ts).
 
-**Lo que NO garantiza (por qué H-01 es crítico):**
+**Riesgo residual (por qué queda en Medio y no se cierra):**
 
-1. **El guard es la *única* barrera.** Si el servicio del backend en Render tiene URL pública (`*.onrender.com`), cualquiera que descubra o filtre `KONG_SECRET` (logs, un error, un dump de entorno vía otra vuln, el historial de git, un screenshot) entra directo al backend **saltándose Kong por completo**: sin rate limiting, sin WAF, sin correlación de logs.
-   → **Acción:** el backend debe ser un **Render Private Service** (solo alcanzable desde la red privada de Render). La URL interna `http://inmuebles-el-guarzo-backend-7wli:10000` en [kong.yml:6](../kong/kong.yml#L6) sugiere que ya usan red privada — **hay que confirmar en el dashboard de Render que el backend NO tiene también un dominio público**. Si lo tiene, quitarlo. Con esto `X-Kong-Secret` pasa de ser "la seguridad" a ser "defensa en profundidad".
+1. **El guard es la *única* barrera.** Como el backend tiene URL pública, cualquiera que descubra o filtre `KONG_SECRET` (un error, un dump de entorno vía otra vuln, el historial de git, un screenshot, Doppler) entra directo al backend **saltándose Kong por completo**: sin rate limiting, sin WAF, sin correlación de logs.
+   → **Acción recomendada (no bloqueante):** volver a un **Render Private Service** (solo alcanzable desde la red privada de Render) o quitar el dominio público del backend. Con eso `X-Kong-Secret` pasa de ser "la seguridad" a ser "defensa en profundidad". Mientras tanto, definir la rotación de `KONG_SECRET` (A.4).
 
 2. **Kong en Render también debe aceptar tráfico solo desde Cloudflare.** Si no, un atacante hace las peticiones directo a la URL de Kong en Render y se salta el WAF de Cloudflare. Configurar **Cloudflare Authenticated Origin Pull** o allowlist de rangos IP de Cloudflare a nivel de Kong/Render. **(verificar en infraestructura)**
 
-3. **`/api/v1/health` está exento del secreto** ([kong-gateway.guard.ts:31-33](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts#L31-L33)). Si el backend fuera alcanzable directamente, este endpoint confirma que el servicio está vivo y no tiene throttle. Impacto bajo por sí solo, pero es un oráculo de reconocimiento. Con el backend privado deja de importar.
+3. **`/api/v1/health` está exento del secreto** ([kong-gateway.guard.ts:34-37](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts#L34-L37)) para el health check de Render. Con el backend público este endpoint **sí** es alcanzable directamente: responde `200 {status, timestamp}` sin throttle y no queda en los logs (`autoLogging.ignore`, [pino-logger.config.ts:49](../src/shared-kernel/infrastructure/logger/pino-logger.config.ts#L49)). No expone datos, pero es un oráculo de reconocimiento. Impacto bajo; deja de importar con el backend privado.
 
-4. **Swagger (`/api/docs`) se salta los guards** (ver H-05 más abajo): es middleware de Express montado por `SwaggerModule.setup`, y los guards de NestJS no corren sobre middleware. A través de Kong queda rate-limitado, pero es accesible sin token.
+4. **Lo que responde antes de los guards.** Los guards de NestJS solo corren sobre rutas de controladores. Sin el secreto, el backend público también responde a: middleware de Express (`helmet`, la respuesta de CORS a un preflight `OPTIONS`) y el 404 de rutas inexistentes. Ninguno expone datos de negocio.
+   - **Swagger (`/api/docs`)** también es middleware (ver H-05). **Resuelto:** en producción no se registra, así que la ruta no existe. El [Dockerfile](../Dockerfile#L27) de producción fija `NODE_ENV=production`; **(verificar en infraestructura)** que Render/Doppler no lo sobrescriba. Fuera de producción sigue accesible sin token.
 
 5. **`request-transformer` con `config.add` NO sobrescribe un header que el cliente ya mandó.** Si un cliente envía `X-Kong-Secret: loquesea`, Kong reenvía **el valor del cliente**, no el suyo. No es un bypass (el backend igual lo rechaza), pero:
    - un cliente legítimo con una extensión de navegador que inyecte ese header recibiría 403 incluso pasando por Kong;
@@ -60,7 +68,7 @@ Archivos revisados: [kong/kong.yml](../kong/kong.yml), [kong/Dockerfile](../kong
 
 ### A.2 Rate limiting — análisis detallado
 
-Configuración actual ([kong.yml:18-29](../kong/kong.yml#L18-L29)):
+Configuración actual ([kong.yml:18-29](../kong/kong.yml#L18-L29), idéntica en [kong.local.yml](../kong/kong.local.yml#L18-L29)):
 
 ```yaml
 - name: rate-limiting
@@ -88,7 +96,7 @@ Como hay Cloudflare delante, lo más robusto en Kong OSS es limitar por el heade
 ```yaml
 services:
   - name: inmuebles-el-guarzo-backend
-    url: http://inmuebles-el-guarzo-backend-7wli:10000
+    url: https://inmuebles-el-guarzo-backend-a1zk.onrender.com   # o la URL interna si vuelve a ser Private Service (H-01)
     routes:
       # Ruta específica y estricta para el formulario público
       - name: public-publication-submit
@@ -137,11 +145,11 @@ Cloudflare (plan Free) permite **1 regla de rate limiting** — úsala como prim
 | Enrutamiento | ✅ OK | Ruta única `/` con `strip_path: false`, correcto para pasar el path completo. |
 | Inyección de identidad de gateway (`X-Kong-Secret`) | ⚠️ | Funciona pero no elimina el header entrante del cliente (A.1 punto 5). |
 | Validación de tokens JWT | ❌ No en Kong | La hace el backend (`JwtAuthGuard` + `SupabaseAuthAdapter`). El README dice que el gateway "valida tokens"; en la práctica no. **Está bien** que la haga el backend (necesita consultar el rol en BD), pero conviene documentarlo para no asumir una defensa que no existe. |
-| `correlation-id` | ✅ OK | `X-Correlation-ID` UUID, `echo_downstream: true`, y el backend lo propaga a los logs ([pino-logger.config.ts:49-60](../src/shared-kernel/infrastructure/logger/pino-logger.config.ts#L49-L60)). Bien hecho. |
+| `correlation-id` | ✅ OK | `X-Correlation-ID` UUID, `echo_downstream: true`, y el backend lo usa como id de request y lo propaga a los logs ([pino-logger.config.ts:52-62](../src/shared-kernel/infrastructure/logger/pino-logger.config.ts#L52-L62)). Bien hecho. |
 | Manejo centralizado de errores | ❌ No en Kong | Lo hace el backend (filtros). Ver H-10. |
 | Bloqueo tras 5 intentos de login | ❌ No implementado | README SEG-C01-E03. Login lo maneja Supabase Auth (fuera de este repo); verificar que Supabase tenga configurado el rate limit de auth. |
 | Tamaño máximo de request | ❌ | Sin plugin `request-size-limiting`. Express corta en ~100 kB por defecto, lo cual ayuda, pero conviene un límite explícito en Kong (p. ej. `request-size-limiting` a 256 kB). |
-| Ocultar versión / tecnología | ❌ | Ver H-12: Kong añade `Via: kong/3.9`, `Server: kong/3.9`, y hay un `response-transformer` que **añade** `X-Powered-By: Kong-Gateway` ([kong.yml:36-42](../kong/kong.yml#L36-L42)) — eso es revelar tecnología a propósito. Quitarlo y poner `KONG_HEADERS=off`. |
+| Ocultar versión / tecnología | ❌ | Ver H-12: Kong añade `Via: kong/3.9`, `Server: kong/3.9`, y hay un `response-transformer` que **añade** `X-Powered-By: Kong-Gateway` ([kong.yml:36-41](../kong/kong.yml#L36-L41)) — eso es revelar tecnología a propósito. Quitarlo y poner `KONG_HEADERS=off`. |
 
 ### A.4 Hardening de `kong.yml` / Dockerfile / entrypoint
 
@@ -151,7 +159,7 @@ Cloudflare (plan Free) permite **1 regla de rate limiting** — úsala como prim
   sed -i "s/KONG_SECRET_PLACEHOLDER/${KONG_SECRET}/g" /etc/kong/kong.yml
   ```
 
-  Si `KONG_SECRET` contiene `/`, `&` o saltos de línea (Doppler genera secretos con cualquier carácter base64/hex, y `/` es común en base64), el `sed` produce una config corrupta o el contenedor no arranca. **Solución preferida:** eliminar el `sed` y usar interpolación nativa de Kong 3.x en `kong.yml`:
+  El mismo `entrypoint.sh` lo usa el entorno local ([Dockerfile.local](../kong/Dockerfile.local#L5)). Si `KONG_SECRET` contiene `/`, `&` o saltos de línea (Doppler genera secretos con cualquier carácter base64/hex, y `/` es común en base64), el `sed` produce una config corrupta o el contenedor no arranca. **Solución preferida:** eliminar el `sed` y usar interpolación nativa de Kong 3.x en `kong.yml`:
 
   ```yaml
   plugins:
@@ -166,10 +174,10 @@ Cloudflare (plan Free) permite **1 regla de rate limiting** — úsala como prim
 
   Y en el Dockerfile: `ENV KONG_DECLARATIVE_CONFIG=/etc/kong/kong.yml` ya está; añadir que Kong debe tener habilitado el rendering de vars (por defecto lo está en modo DB-less). Con esto el `entrypoint.sh` se reduce a `exec /docker-entrypoint.sh kong docker-start`.
 
-- **Puerto:** el Dockerfile fija `KONG_PROXY_LISTEN=0.0.0.0:8000`. Render normalmente inyecta `PORT` (10000). **(verificar)** que el servicio de Kong en Render esté configurado para exponer el puerto 8000, o parametrizar `KONG_PROXY_LISTEN=0.0.0.0:${PORT:-8000}`.
+- **Puerto:** el Dockerfile fija `KONG_PROXY_LISTEN=0.0.0.0:8000` ([Dockerfile:16](../kong/Dockerfile#L16)). Render normalmente inyecta `PORT` (10000). **(verificar)** que el servicio de Kong en Render esté configurado para exponer el puerto 8000, o parametrizar `KONG_PROXY_LISTEN=0.0.0.0:${PORT:-8000}`.
 - **`KONG_ADMIN_LISTEN=off`** ✅ correcto, la Admin API está deshabilitada.
 - **Añadir plugins recomendados:** `request-size-limiting`, y opcionalmente `bot-detection` y `ip-restriction` (allowlist de Cloudflare).
-- **Rotación de `KONG_SECRET`:** hoy es estático e indefinido. Definir un procedimiento de rotación (cambiar en Doppler → redeploy de Kong y backend). Considerar 2 secretos válidos simultáneamente durante la ventana de rotación.
+- **Rotación de `KONG_SECRET`:** hoy es estático e indefinido, y con el backend público (H-01) es la única barrera frente al acceso directo. Definir un procedimiento de rotación (cambiar en Doppler → redeploy de Kong y backend). Considerar 2 secretos válidos simultáneamente durante la ventana de rotación.
 
 ---
 
@@ -188,7 +196,7 @@ if (!this.secretKey) {
 
 La rama era inalcanzable porque `TURNSTILE_SECRET_KEY` es `@IsNotEmpty()` en `EnvSchema` y la app no arranca sin ella, pero el diseño "en caso de duda, dejar pasar" era peligroso: un cambio del esquema o un error de configuración desactivaba en silencio el anti-bot del formulario público.
 
-**Resuelto (rama `fix/turnstile-fail-closed`).** El adapter falla cerrado, sin bypass en ningún entorno ([turnstile-captcha-verifier.adapter.ts:26-38](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L26-L38)):
+**Resuelto (PR #85).** El adapter falla cerrado, sin bypass en ningún entorno ([turnstile-captcha-verifier.adapter.ts:26-38](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L26-L38)):
 - Si la clave falta, está vacía o solo tiene espacios, el constructor lanza un `Error` y la app no arranca (fail fast). En desarrollo se usa la clave de Doppler dev.
 - Se eliminó la rama que devolvía `true`; `secretKey` se tipa como `string`.
 - Si la llamada a Cloudflare falla, `verify()` devuelve `false` y loguea el error.
@@ -202,39 +210,28 @@ La rama era inalcanzable porque `TURNSTILE_SECRET_KEY` es `@IsNotEmpty()` en `En
 - Comprobar `response.ok` antes de confiar en el cuerpo de la respuesta.
 - Timeout en la llamada a `siteverify`.
 
-### H-05 — Swagger expuesto en producción (Medio)
+### H-05 — Swagger expuesto en producción (Medio) — resuelto
 
-[main.ts:56-63](../src/main.ts#L56-L63): `SwaggerModule.setup('api/docs', ...)` se ejecuta siempre. `/api/docs` y `/api/docs-json` son middleware de Express → **no pasan por `KongGatewayGuard` ni `JwtAuthGuard`**. A través de Kong quedan rate-limitados pero son públicos: exponen el esquema completo de la API (todos los endpoints, DTOs, ejemplos).
+**Hallazgo original.** `main.ts` ejecutaba `SwaggerModule.setup('api/docs', ...)` siempre. `/api/docs` y `/api/docs-json` son middleware de Express → **no pasan por `KongGatewayGuard` ni `JwtAuthGuard`**. A través de Kong quedaban rate-limitados pero eran públicos: exponían el esquema completo de la API (todos los endpoints, DTOs, ejemplos).
 
-**Acción:**
-```ts
-if (process.env.NODE_ENV !== 'production') {
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
-}
-```
-o protegerlo con basic-auth. Si se quiere en producción, al menos moverlo bajo el prefijo protegido y/o exigir el secreto de Kong con un middleware propio.
+**Resuelto (PR #83).** El registro de la documentación se extrajo a [swagger.setup.ts](../src/shared-kernel/presentation/http/swagger.setup.ts), que retorna sin registrar nada cuando `NODE_ENV` es `production` ([swagger.setup.ts:18-21](../src/shared-kernel/presentation/http/swagger.setup.ts#L18-L21)). [main.ts:61](../src/main.ts#L61) lo invoca con el `NODE_ENV` validado por `EnvSchema`, y la imagen de producción fija `ENV NODE_ENV=production` ([Dockerfile:27](../Dockerfile#L27)). Cubierto por [swagger.setup.spec.ts](../src/shared-kernel/presentation/http/swagger.setup.spec.ts).
 
-### H-06 — `KongGatewayGuard`: comparación no constante (Medio)
+**Nota.** En `development` y `test` Swagger sigue accesible sin autenticación. Es aceptable mientras esos entornos no estén expuestos públicamente; si alguno lo estuviera, protegerlo con basic-auth o con el secreto de Kong.
 
-[kong-gateway.guard.ts:38](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts#L38): `secret !== this.kongSecret` es una comparación de strings que corta en el primer byte distinto → **timing attack** teórico para recuperar el secreto byte a byte. Sobre la red el ruido lo hace poco práctico, pero la corrección es trivial:
+### H-06 — `KongGatewayGuard`: comparación no constante (Medio) — resuelto
 
-```ts
-import { timingSafeEqual } from 'node:crypto';
+**Hallazgo original.** El guard comparaba `secret !== this.kongSecret`, una comparación de strings que corta en el primer byte distinto → **timing attack** teórico para recuperar el secreto byte a byte. Sobre la red el ruido lo hace poco práctico, pero con el backend público (H-01) cualquiera puede medir tiempos directamente contra él. Además, `request.headers['x-kong-secret']` puede ser `string | string[]`: con dos headers `X-Kong-Secret` el tipo era `string[]` y el rechazo dependía de un efecto colateral del tipo (`!==` contra un array siempre da `true`), no de una regla explícita.
 
-private safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
-}
-```
+**Resuelto.** [kong-gateway.guard.ts](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts):
+- El header se normaliza de forma explícita ([kong-gateway.guard.ts:39-47](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts#L39-L47)): si no es `string` (ausente o `string[]`) o está vacío, se lanza `ForbiddenException` sin comparar.
+- La comparación usa `crypto.timingSafeEqual` en un método privado `safeEqual` ([kong-gateway.guard.ts:52-62](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts#L52-L62)). Compara `byteLength` antes (no `length` de caracteres, que difiere de los bytes con entrada no ASCII) porque `timingSafeEqual` lanza con buffers de distinto tamaño. Esto revela la longitud del secreto, lo cual es aceptable y estándar; ocultarla exigiría comparar HMACs.
+- `/api/v1/health` sigue exento sin comparar el secreto (por diseño, ver A.1 punto 3).
+- `KONG_SECRET` en `EnvSchema` y la inyección del header en Kong no cambian.
+- Cubierto por [kong-gateway.guard.spec.ts](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.spec.ts): secreto correcto, incorrecto de igual longitud, de distinta longitud (sin llamar a `timingSafeEqual`), header ausente, vacío, duplicado, y `/health` sin comparar.
 
-También: `request.headers['x-kong-secret']` puede ser `string | string[]`; si llegan dos headers `X-Kong-Secret` el tipo es `string[]` y `secret !== this.kongSecret` siempre da `true` (rechaza) — no es vuln, pero conviene normalizar.
+### H-07 — CORS demasiado permisivo (Medio) — parcialmente resuelto
 
-### H-07 — CORS demasiado permisivo (Medio)
-
-[main.ts:31-33](../src/main.ts#L31-L33) (tras el refactor de la Fase 2, la lista viene de `CORS_ALLOWED_ORIGINS` pero se mantiene):
+**Hallazgo original.** `main.ts` aceptaba, además de la lista de `CORS_ALLOWED_ORIGINS`, cualquier origen que terminara en `.vercel.app`:
 
 ```ts
 if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
@@ -244,17 +241,24 @@ if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')
 credentials: true,
 ```
 
-- `origin.endsWith('.vercel.app')`: **cualquiera** puede desplegar `atacante.vercel.app` y, con `credentials: true`, hacer peticiones cross-origin autenticadas (leer respuestas con cookies/tokens del usuario víctima si esta visita el sitio del atacante). Es un vector de robo de datos de sesión.
+- `origin.endsWith('.vercel.app')`: **cualquiera** con una cuenta gratis de Vercel puede desplegar `atacante.vercel.app` y hacer peticiones cross-origin hacia la API. El frontend no usa cookies para autenticación (envía `Authorization: Bearer` leído de `localStorage`), así que el robo de sesión vía CSRF no aplica hoy; pero el comodín permitía usar la API desde un origen no controlado por el negocio.
 - `!origin` ⇒ permitido: acepta peticiones sin `Origin` (curl, server-to-server). Con `credentials: true` es cuestionable.
 
-**Acción (ya acordada para la iteración de seguridad):** sustituir el wildcard por un patrón específico de los previews del proyecto:
+**Resuelto (comodín de Vercel, PR #87).** La validación se extrajo a [cors-origin.ts](../src/shared-kernel/presentation/http/cors-origin.ts) (`isOriginAllowed`), que [main.ts](../src/main.ts) usa en el callback de `enableCors`. El comodín se sustituyó por un patrón anclado al proyecto **y** al team de Vercel:
 
 ```ts
-const VERCEL_PREVIEW = /^https:\/\/inmuebles-el-guarzo-frontend-[a-z0-9-]+\.vercel\.app$/;
-const isAllowed = !origin
-  ? false  // decidir: ¿de verdad hace falta permitir sin Origin?
-  : allowedOrigins.includes(origin) || VERCEL_PREVIEW.test(origin);
+const VERCEL_PREVIEW_ORIGIN =
+  /^https:\/\/inmuebles-el-guarzo-frontend-[a-z0-9-]+-inmuebles-el-guarzo\.vercel\.app$/;
 ```
+
+- El sufijo del team es imprescindible: en Vercel el nombre de proyecto es único por team, no global, así que el patrón que se propuso originalmente en esta auditoría (sin team) lo satisface cualquiera que cree un proyecto `inmuebles-el-guarzo-frontend` en su propio team.
+- `CORS_ALLOWED_ORIGINS`, `credentials`, `methods` y `allowedHeaders` no cambian.
+- Cubierto por [cors-origin.spec.ts](../src/shared-kernel/presentation/http/cors-origin.spec.ts): lista permitida, previews del team (deployment y rama) y rechazos (`atacante.vercel.app`, mismo proyecto en otro team, sufijo/prefijo añadido, `http://`, origen desconocido).
+
+**Pendiente.**
+- **Decidir `!origin`.** Hoy se sigue permitiendo (cubierto por un test de caracterización). Evaluar si algún cliente legítimo llama sin `Origin` antes de rechazarlo.
+- **Riesgo residual del patrón.** No está confirmado que Vercel impida a terceros reservar como dominio de producción un nombre que termine en `-inmuebles-el-guarzo.vercel.app`. La solución totalmente robusta es no depender de `*.vercel.app` (dominio propio para previews o lista explícita).
+- **(verificar en infraestructura)** que el nombre del proyecto y el slug del team en Vercel coinciden con el patrón, y que los previews no se truncan por longitud del subdominio.
 
 ### H-08 — XSS almacenado latente / sanitización incompleta (Medio)
 
@@ -278,7 +282,8 @@ const isAllowed = !origin
 
 - [prisma-exception.filter.ts:31-33](../src/shared-kernel/presentation/filters/prisma-exception.filter.ts#L31-L33): `UniqueConstraintViolationException` devuelve al cliente `A record with the same "email, dedup_hash" already exists.` → **revela nombres de columnas** (`dedup_hash`, etc.). El `message` viaja en el body ([domain-exception.filter.ts:44-50](../src/shared-kernel/presentation/filters/domain-exception.filter.ts#L44-L50)).
 - No hay un filtro *catch-all* que normalice errores no-dominio / no-Prisma al shape `{code, message, type}`. `ForbiddenException`, errores de `ValidationPipe` (`forbidNonWhitelisted: true` lista los nombres de propiedades), y cualquier excepción inesperada usan el formato por defecto de Nest — inconsistente. El stack no se filtra al body (Nest lo manda solo a logs), lo cual está bien.
-- `SupabaseAuthAdapter` mete el `reason` del error de `jose` en la excepción ([supabase-auth.adapter.ts:80-83](../src/modules/iam/infrastructure/identity-provider/supabase/supabase-auth.adapter.ts#L80-L83)); el comentario dice que solo va a logs y el cliente ve `IAM.INVALID_AUTH_TOKEN` — **verificar** que el `DomainExceptionFilter` no esté devolviendo ese `message` detallado al cliente (hoy sí lo devuelve en `body.message`).
+- **Confirmado:** `SupabaseAuthAdapter` mete el `reason` del error de `jose` en la excepción ([supabase-auth.adapter.ts:80-83](../src/modules/iam/infrastructure/identity-provider/supabase/supabase-auth.adapter.ts#L80-L83)) y `InvalidAuthTokenException` lo concatena al mensaje (`Authentication token is invalid: ${reason}`, [invalid-auth-token.exception.ts:26-28](../src/modules/iam/domain/exceptions/invalid-auth-token.exception.ts#L26-L28)). El comentario del adapter dice que el motivo solo va a logs y que el cliente ve `IAM.INVALID_AUTH_TOKEN`, pero `DomainExceptionFilter` devuelve ese `message` en `body.message`: el cliente recibe el motivo interno de `jose` y, en `extractSub`/`extractEmail` ([supabase-auth.adapter.ts:93](../src/modules/iam/infrastructure/identity-provider/supabase/supabase-auth.adapter.ts#L93), [:114](../src/modules/iam/infrastructure/identity-provider/supabase/supabase-auth.adapter.ts#L114)), el valor del claim rechazado.
+- El 403 de `KongGatewayGuard` (`ForbiddenException`) también usa el formato por defecto de Nest (`{statusCode, message, error}`), no el shape de dominio.
 
 **Acción:**
 - Mensajes genéricos hacia el cliente; detalle solo a logs/Sentry.
@@ -288,17 +293,17 @@ const isAllowed = !origin
 ### H-11 — Sin `trust proxy` (Bajo-Medio)
 
 [main.ts](../src/main.ts) nunca llama `app.set('trust proxy', ...)`. Detrás de Cloudflare + Render + Kong, `req.ip` y `req.socket.remoteAddress` son de infraestructura. Impacto:
-- `submittedFromIp` y `consentIp` que se guardan como **evidencia de consentimiento (Ley 1581)** ([submit-publication-request.interactor.ts:119-131](../src/modules/publications/application/use-cases/submit-publication-request/submit-publication-request.interactor.ts#L119-L131)) son la IP del proxy, no la del titular. Evidencia legal débil.
+- `submittedFromIp` se toma de `req.ip` ([publications.controller.ts:119](../src/modules/publications/presentation/http/controllers/publications.controller.ts#L119)) y, junto con `consentIp`, se guarda como **evidencia de consentimiento (Ley 1581)** ([submit-publication-request.interactor.ts:116-133](../src/modules/publications/application/use-cases/submit-publication-request/submit-publication-request.interactor.ts#L116-L133)). Es la IP del proxy, no la del titular. Evidencia legal débil.
 - Cualquier rate limiting/auditoría por IP a nivel de app agruparía todo bajo una IP.
 
 **Acción:** `app.set('trust proxy', 1)` (o el número de proxies) y leer la IP del header que corresponda. Como Cloudflare está delante, `CF-Connecting-IP` es la fuente fiable; extraerla explícitamente en el controlador en lugar de `req.ip`.
 
 ### H-12 — Helmet y headers (Bajo)
 
-- [main.ts:20](../src/main.ts#L20): `app.use(helmet())` con defaults. Para una API JSON el CSP por defecto (`default-src 'self'`) es aceptable, pero:
-  - rompe Swagger UI si se deja en producción (scripts/estilos inline);
+- [main.ts:23](../src/main.ts#L23): `app.use(helmet())` con defaults. Para una API JSON el CSP por defecto (`default-src 'self'`) es aceptable, pero:
+  - rompería Swagger UI (scripts/estilos inline); hoy no aplica en producción porque Swagger no se registra allí (H-05), pero sí en desarrollo si se endurece el CSP de forma global;
   - no fija `Cross-Origin-Resource-Policy` / `Cross-Origin-Opener-Policy` de forma explícita.
-- Kong revela versión (`Server: kong/3.9`, `Via`) y hay un `X-Powered-By: Kong-Gateway` añadido a propósito ([kong.yml:37-42](../kong/kong.yml#L37-L42)).
+- Kong revela versión (`Server: kong/3.9`, `Via`) y hay un `X-Powered-By: Kong-Gateway` añadido a propósito ([kong.yml:36-41](../kong/kong.yml#L36-L41)).
 
 **Acción:** configurar Helmet explícitamente; en Kong `ENV KONG_HEADERS=off` y eliminar el `response-transformer` que añade `X-Powered-By`. NestJS por defecto no manda `X-Powered-By: Express` (Nest lo desactiva), verificar.
 
@@ -318,14 +323,14 @@ Depender solo de Kong es frágil (H-01, H-02). **Defensa en profundidad recomend
 ### H-15 — Supply chain / CI (Bajo)
 
 - [.github/workflows/ci.yml](../.github/workflows/ci.yml): sin `pnpm audit`, sin Dependabot/Renovate, sin CodeQL. SonarCloud hace algo de SAST pero no cubre CVEs de dependencias.
-- `SonarSource/sonarcloud-github-action@master` — clavar a `@master` es un riesgo de supply chain (una acción comprometida corre con `SONAR_TOKEN` y `GITHUB_TOKEN`). Pinnear a un tag/SHA.
+- `SonarSource/sonarcloud-github-action@master` ([ci.yml:94](../.github/workflows/ci.yml#L94)) — clavar a `@master` es un riesgo de supply chain (una acción comprometida corre con `SONAR_TOKEN` y `GITHUB_TOKEN`). Pinnear a un tag/SHA.
 - `jose@^4.15.9` — la v4 está en mantenimiento; v5/v6 son las actuales. 4.15.9 ya incluye los fixes de DoS conocidos, pero conviene planificar el salto a v5+.
 
 **Acción:** añadir job de `pnpm audit --prod` (o `osv-scanner`), activar Dependabot, pinnear la acción de Sonar.
 
 ### H-16 — Outbox transaccional no usado (Bajo, fiabilidad)
 
-El esquema define `notification_outbox` para entrega confiable ([schema.prisma:719-750](../prisma/schema.prisma#L719-L750)), pero los handlers llaman a Novu directamente **después** de que la transacción de negocio ya cerró ([on-publication-request-approved.handler.ts:27-34](../src/modules/notifications/application/event-handlers/on-publication-request-approved.handler.ts#L27-L34), [in-memory-event-bus.ts:61-74](../src/shared-kernel/infrastructure/event-bus/in-memory-event-bus.ts#L61-L74)). Si el proceso cae entre el commit y el `trigger`, la notificación se pierde sin rastro. No es seguridad, pero sí un requisito (RF-52/RF-55/RF-57) a medio implementar.
+El esquema define `notification_outbox` para entrega confiable ([schema.prisma:719-750](../prisma/schema.prisma#L719-L750)), pero los handlers llaman a Novu directamente **después** de que la transacción de negocio ya cerró: los interactores publican los eventos tras el `save` y sin pasar `tx` (p. ej. [approve-publication-request.interactor.ts:61-63](../src/modules/publications/application/use-cases/approve-publication-request/approve-publication-request.interactor.ts#L61-L63)), y el handler dispara el workflow ([on-publication-request-approved.handler.ts:27-34](../src/modules/notifications/application/event-handlers/on-publication-request-approved.handler.ts#L27-L34), [in-memory-event-bus.ts:61-74](../src/shared-kernel/infrastructure/event-bus/in-memory-event-bus.ts#L61-L74)). Si el proceso cae entre el commit y el `trigger`, la notificación se pierde sin rastro. No es seguridad, pero sí un requisito (RF-52/RF-55/RF-57) a medio implementar.
 
 ---
 
@@ -334,12 +339,13 @@ El esquema define `notification_outbox` para entrega confiable ([schema.prisma:7
 - **Verificación de JWT sólida:** algoritmo `ES256` en allowlist explícita (previene *algorithm confusion*), `issuer` y `audience` verificados, JWKS remoto con rotación automática vía `jose` ([supabase-auth.adapter.ts:19-23,72-84](../src/modules/iam/infrastructure/identity-provider/supabase/supabase-auth.adapter.ts#L19-L23)).
 - **El rol se toma de la BD, no del token** ([jwt-auth.guard.ts:66-76](../src/modules/iam/presentation/http/guards/jwt-auth.guard.ts#L66-L76)): un usuario no puede escalar privilegios manipulando `app_metadata.role` en un token robado/forjado (aunque forjarlo ya lo impide la firma).
 - **Autorización por rol en cada endpoint de admin** ([publications.controller.ts](../src/modules/publications/presentation/http/controllers/publications.controller.ts), chequeos `user.role !== 'ADMIN'`).
-- **Prisma en todo**, sin `$queryRaw`/`$executeRaw`/`Unsafe` en ningún lado → sin superficie de inyección SQL. Paginación con tope (`Math.min(limit, 50)`).
-- **Tablas append-only por trigger SQL** para `audit_log`, `notification_log`, `offer_state_transitions`, `contact_message_notes`, `personal_data_authorizations`, y no-DELETE en `publication_requests` + inmutabilidad de `reference_number` ([migración de triggers](../prisma/migrations/20260506031333_add_append_only_triggers/migration.sql)). Muy buen control de integridad.
+- **Prisma en todo**, sin `$queryRaw`/`$executeRaw`/`Unsafe` en ningún lado → sin superficie de inyección SQL. Paginación con tope (`Math.min(filters.limit ?? 20, 50)`, [publication-request.prisma.repository.adapter.ts:70](../src/modules/publications/infrastructure/persistence/prisma/publication-request.prisma.repository.adapter.ts#L70)).
+- **Tablas append-only por trigger SQL** para `audit_log`, `notification_log`, `offer_state_transitions`, `contact_message_notes`, `personal_data_authorizations` ([migración de triggers append-only](../prisma/migrations/20260506031333_add_append_only_triggers/migration.sql)), y no-DELETE en `publication_requests` + inmutabilidad de `reference_number` ([migración de publication_requests](../prisma/migrations/20260522210559_add_publication_requests_no_delete_trigger/migration.sql)). Muy buen control de integridad.
+- **Acceso directo al backend bloqueado** por `KongGatewayGuard` global, fail-closed y con comparación en tiempo constante (H-01, H-06).
 - **Validación de entrada exhaustiva** con `class-validator` + `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`.
 - **Validación de entorno al bootstrap** ([env.validator.ts](../src/shared-kernel/infrastructure/config/env.validator.ts)): la app no arranca con config inválida.
-- **Sin secretos en el repo:** `.gitignore` cubre `.env*` y `.doppler.yaml`; solo `.env.example` con placeholders. Secretos vía Doppler.
-- **Sentry con `sendDefaultPii: false`** ([instrument.ts:26](../src/instrument.ts#L26)) y **redacción de logs** de `authorization`, `cookie`, `password`, `token` ([pino-logger.config.ts:61-69](../src/shared-kernel/infrastructure/logger/pino-logger.config.ts#L61-L69)).
+- **Sin secretos en el repo:** `.gitignore` cubre `.env`, `.env.local`, `.env.*.local` y `.doppler.yaml`; los únicos archivos versionados son `.env.example` (placeholders) y `doppler.yaml` (solo nombre de proyecto y config, sin secretos). Secretos vía Doppler. Ojo: un `.env.production` o `.env.development` **no** está ignorado; no crearlos o ampliar el patrón a `.env.*` con excepción para `.env.example`.
+- **Sentry con `sendDefaultPii: false`** ([instrument.ts:26](../src/instrument.ts#L26)) y **redacción de logs** de `authorization`, `cookie`, `password`, `token` ([pino-logger.config.ts:64-72](../src/shared-kernel/infrastructure/logger/pino-logger.config.ts#L64-L72)). Además, el serializer de requests solo registra `id`, `method` y `url` ([pino-logger.config.ts:73-78](../src/shared-kernel/infrastructure/logger/pino-logger.config.ts#L73-L78)), así que ningún header (incluido `X-Kong-Secret`) llega a los logs.
 - **`X-Correlation-ID`** propagado extremo a extremo (Kong → backend → BetterStack).
 - **Consentimiento Ley 1581** modelado con versión de aviso de privacidad, propósitos, evidencia técnica y revocación append-only.
 
@@ -349,20 +355,20 @@ El esquema define `notification_outbox` para entrega confiable ([schema.prisma:7
 
 ### Ahora (antes de exponer a tráfico real)
 
-1. **(H-01)** Confirmar en Render que el backend es **Private Service** sin dominio público. Si tiene URL pública, quitarla.
+1. **(H-01)** ~~Confirmar en Render que el backend no es accesible sin pasar por Kong.~~ (verificado: el backend tiene URL pública, pero `KongGatewayGuard` rechaza con 403 todo acceso directo). Residual: pasar a **Private Service** o quitar el dominio público para que `KONG_SECRET` deje de ser la única barrera.
 2. **(H-01)** Configurar Cloudflare → origen (Kong) con Authenticated Origin Pull o allowlist de IPs de Cloudflare.
 3. **(H-04)** ~~Turnstile fail-**closed**~~ (hecho: sin bypass en ningún entorno) + enviar `remoteip` + validar `hostname`/`action`.
-4. **(H-05)** Deshabilitar Swagger en producción.
+4. **(H-05)** ~~Deshabilitar Swagger en producción.~~ (hecho en PR #83)
 5. **(H-09)** Quitar el `sed` del `entrypoint.sh`, usar `${{ env "KONG_SECRET" }}` en `kong.yml`.
 
 ### Siguiente iteración (endurecimiento)
 
 6. **(H-02/H-03)** Rate limiting de Kong: `limit_by: header` + `CF-Connecting-IP`, `KONG_TRUSTED_IPS`/`KONG_REAL_IP_HEADER`, y ruta dedicada con límite estricto para `POST /api/v1/publications`.
-7. **(H-06)** `timingSafeEqual` en `KongGatewayGuard` + normalizar header a `string`.
-8. **(H-07)** CORS: regex de preview de Vercel en lugar del wildcard; revisar `!origin` + `credentials`.
+7. **(H-06)** ~~`timingSafeEqual` en `KongGatewayGuard` + normalizar header a `string`.~~ (hecho)
+8. **(H-07)** CORS: ~~regex de preview de Vercel en lugar del wildcard~~ (hecho en PR #87: anclado a proyecto y team); revisar `!origin` + `credentials`.
 9. **(H-11)** `trust proxy` + leer `CF-Connecting-IP` para `consentIp`/`submittedFromIp`.
 10. **(H-08)** Sanitizar `ownerFullName`, `proposedLocation` (y `ContactMessage`); quitar `escapeValue: false` global de i18next.
-11. **(H-10)** Filtro catch-all + mensajes genéricos al cliente; quitar nombres de columnas de los errores `P2002`.
+11. **(H-10)** Filtro catch-all + mensajes genéricos al cliente; quitar nombres de columnas de los errores `P2002` y el motivo interno de `IAM.INVALID_AUTH_TOKEN`.
 12. **(H-13)** Rate limiting a nivel de app con `@upstash/ratelimit` sobre endpoints públicos (defensa en profundidad).
 
 ### Backlog
@@ -371,9 +377,9 @@ El esquema define `notification_outbox` para entrega confiable ([schema.prisma:7
 14. **(H-14)** Secuencia Postgres para `reference_number`; dedup-check + insert atómicos.
 15. **(H-15)** `pnpm audit`/OSV en CI, Dependabot, pinear acción de Sonar, planificar `jose` v5+.
 16. **(H-16)** Implementar el patrón outbox real para notificaciones, o documentar que se acepta la pérdida.
-17. **(Kong)** Añadir `request-size-limiting`; documentar procedimiento de rotación de `KONG_SECRET`.
+17. **(Kong)** Añadir `request-size-limiting`; documentar procedimiento de rotación de `KONG_SECRET` (prioritario mientras el backend sea público, ver H-01).
 18. **(Kong)** Verificar que Kong escuche en el puerto que Render espera.
 
 ---
 
-*Documento generado como parte de la revisión de arquitectura. Los puntos marcados **(verificar en infraestructura)** requieren acceso a los dashboards de Render / Cloudflare / Doppler para confirmarse.*
+*Documento generado como parte de la revisión de arquitectura y revisado contra el código el 2026-09-28. Los puntos marcados **(verificar en infraestructura)** requieren acceso a los dashboards de Render / Cloudflare / Doppler para confirmarse.*
