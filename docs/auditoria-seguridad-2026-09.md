@@ -14,9 +14,9 @@
 | H-02 | El rate limiting de Kong no identifica al cliente real (IP detrás de Cloudflare + Render) → o es inefectivo o causa auto-DoS | **Alto** | Rate limiting |
 | H-03 | No hay límite específico para el formulario público de captación; 60 req/min es demasiado permisivo para ese endpoint | **Alto** | Rate limiting |
 | H-04 | Verificación de Turnstile "fail-open": si falta la clave, `verify()` devuelve `true`. **Parcialmente resuelto:** ya falla cerrado; pendiente `remoteip` y validar `hostname`/`action` | **Alto** | Anti-bot |
-| H-05 | Swagger UI (`/api/docs`, `/api/docs-json`) expuesto sin autenticación y sin pasar por los guards | **Medio** | Exposición |
+| H-05 | Swagger UI (`/api/docs`, `/api/docs-json`) expuesto sin autenticación y sin pasar por los guards. **Resuelto:** no se registra cuando `NODE_ENV` es `production` | **Medio** | Exposición |
 | H-06 | `KongGatewayGuard`: comparación de secreto no constante en tiempo + `/health` exento sin throttle | **Medio** | Gateway |
-| H-07 | CORS: `origin.endsWith('.vercel.app')` + `credentials: true` permite exfiltración desde cualquier subdominio `*.vercel.app` | **Medio** | CORS |
+| H-07 | CORS: `origin.endsWith('.vercel.app')` + `credentials: true` permite llamar a la API desde cualquier subdominio `*.vercel.app`. **Parcialmente resuelto:** patrón anclado al proyecto y team de Vercel; pendiente decidir `!origin` | **Medio** | CORS |
 | H-08 | XSS almacenado latente: `ownerFullName` y `proposedLocation` no se sanitizan; plantillas de email con `escapeValue: false` | **Medio** | XSS |
 | H-09 | `entrypoint.sh` inyecta `KONG_SECRET` con `sed` sin escapar → rompe o corrompe la config si el secreto tiene `/ & \n` | **Medio** | Gateway / build |
 | H-10 | Fuga de detalle interno en respuestas de error (nombres de columnas de BD en `P2002`) | **Bajo** | Info disclosure |
@@ -51,7 +51,7 @@ Archivos revisados: [kong/kong.yml](../kong/kong.yml), [kong/Dockerfile](../kong
 
 3. **`/api/v1/health` está exento del secreto** ([kong-gateway.guard.ts:31-33](../src/shared-kernel/presentation/http/guards/kong-gateway.guard.ts#L31-L33)). Si el backend fuera alcanzable directamente, este endpoint confirma que el servicio está vivo y no tiene throttle. Impacto bajo por sí solo, pero es un oráculo de reconocimiento. Con el backend privado deja de importar.
 
-4. **Swagger (`/api/docs`) se salta los guards** (ver H-05 más abajo): es middleware de Express montado por `SwaggerModule.setup`, y los guards de NestJS no corren sobre middleware. A través de Kong queda rate-limitado, pero es accesible sin token.
+4. **Swagger (`/api/docs`) se salta los guards** (ver H-05 más abajo): es middleware de Express montado por `SwaggerModule.setup`, y los guards de NestJS no corren sobre middleware. **Resuelto:** en producción ya no se registra, así que la ruta no existe; fuera de producción sigue accesible sin token.
 
 5. **`request-transformer` con `config.add` NO sobrescribe un header que el cliente ya mandó.** Si un cliente envía `X-Kong-Secret: loquesea`, Kong reenvía **el valor del cliente**, no el suyo. No es un bypass (el backend igual lo rechaza), pero:
    - un cliente legítimo con una extensión de navegador que inyecte ese header recibiría 403 incluso pasando por Kong;
@@ -188,7 +188,7 @@ if (!this.secretKey) {
 
 La rama era inalcanzable porque `TURNSTILE_SECRET_KEY` es `@IsNotEmpty()` en `EnvSchema` y la app no arranca sin ella, pero el diseño "en caso de duda, dejar pasar" era peligroso: un cambio del esquema o un error de configuración desactivaba en silencio el anti-bot del formulario público.
 
-**Resuelto (rama `fix/turnstile-fail-closed`).** El adapter falla cerrado, sin bypass en ningún entorno ([turnstile-captcha-verifier.adapter.ts:26-38](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L26-L38)):
+**Resuelto (PR #85).** El adapter falla cerrado, sin bypass en ningún entorno ([turnstile-captcha-verifier.adapter.ts:26-38](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L26-L38)):
 - Si la clave falta, está vacía o solo tiene espacios, el constructor lanza un `Error` y la app no arranca (fail fast). En desarrollo se usa la clave de Doppler dev.
 - Se eliminó la rama que devolvía `true`; `secretKey` se tipa como `string`.
 - Si la llamada a Cloudflare falla, `verify()` devuelve `false` y loguea el error.
@@ -202,18 +202,13 @@ La rama era inalcanzable porque `TURNSTILE_SECRET_KEY` es `@IsNotEmpty()` en `En
 - Comprobar `response.ok` antes de confiar en el cuerpo de la respuesta.
 - Timeout en la llamada a `siteverify`.
 
-### H-05 — Swagger expuesto en producción (Medio)
+### H-05 — Swagger expuesto en producción (Medio) — resuelto
 
-[main.ts:56-63](../src/main.ts#L56-L63): `SwaggerModule.setup('api/docs', ...)` se ejecuta siempre. `/api/docs` y `/api/docs-json` son middleware de Express → **no pasan por `KongGatewayGuard` ni `JwtAuthGuard`**. A través de Kong quedan rate-limitados pero son públicos: exponen el esquema completo de la API (todos los endpoints, DTOs, ejemplos).
+**Hallazgo original.** `main.ts` ejecutaba `SwaggerModule.setup('api/docs', ...)` siempre. `/api/docs` y `/api/docs-json` son middleware de Express → **no pasan por `KongGatewayGuard` ni `JwtAuthGuard`**. A través de Kong quedaban rate-limitados pero eran públicos: exponían el esquema completo de la API (todos los endpoints, DTOs, ejemplos).
 
-**Acción:**
-```ts
-if (process.env.NODE_ENV !== 'production') {
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
-}
-```
-o protegerlo con basic-auth. Si se quiere en producción, al menos moverlo bajo el prefijo protegido y/o exigir el secreto de Kong con un middleware propio.
+**Resuelto (PR #83).** El registro de la documentación se extrajo a [swagger.setup.ts](../src/shared-kernel/presentation/http/swagger.setup.ts), que retorna sin registrar nada cuando `NODE_ENV` es `production` ([swagger.setup.ts:18-21](../src/shared-kernel/presentation/http/swagger.setup.ts#L18-L21)). [main.ts:61](../src/main.ts#L61) lo invoca con el `NODE_ENV` validado por `EnvSchema`. Cubierto por [swagger.setup.spec.ts](../src/shared-kernel/presentation/http/swagger.setup.spec.ts).
+
+**Nota.** En `development` y `test` Swagger sigue accesible sin autenticación. Es aceptable mientras esos entornos no estén expuestos públicamente; si alguno lo estuviera, protegerlo con basic-auth o con el secreto de Kong.
 
 ### H-06 — `KongGatewayGuard`: comparación no constante (Medio)
 
@@ -232,9 +227,9 @@ private safeEqual(a: string, b: string): boolean {
 
 También: `request.headers['x-kong-secret']` puede ser `string | string[]`; si llegan dos headers `X-Kong-Secret` el tipo es `string[]` y `secret !== this.kongSecret` siempre da `true` (rechaza) — no es vuln, pero conviene normalizar.
 
-### H-07 — CORS demasiado permisivo (Medio)
+### H-07 — CORS demasiado permisivo (Medio) — parcialmente resuelto
 
-[main.ts:31-33](../src/main.ts#L31-L33) (tras el refactor de la Fase 2, la lista viene de `CORS_ALLOWED_ORIGINS` pero se mantiene):
+**Hallazgo original.** `main.ts` aceptaba, además de la lista de `CORS_ALLOWED_ORIGINS`, cualquier origen que terminara en `.vercel.app`:
 
 ```ts
 if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
@@ -244,17 +239,24 @@ if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')
 credentials: true,
 ```
 
-- `origin.endsWith('.vercel.app')`: **cualquiera** puede desplegar `atacante.vercel.app` y, con `credentials: true`, hacer peticiones cross-origin autenticadas (leer respuestas con cookies/tokens del usuario víctima si esta visita el sitio del atacante). Es un vector de robo de datos de sesión.
+- `origin.endsWith('.vercel.app')`: **cualquiera** con una cuenta gratis de Vercel puede desplegar `atacante.vercel.app` y hacer peticiones cross-origin hacia la API. El frontend no usa cookies para autenticación (envía `Authorization: Bearer` leído de `localStorage`), así que el robo de sesión vía CSRF no aplica hoy; pero el comodín permitía usar la API desde un origen no controlado por el negocio.
 - `!origin` ⇒ permitido: acepta peticiones sin `Origin` (curl, server-to-server). Con `credentials: true` es cuestionable.
 
-**Acción (ya acordada para la iteración de seguridad):** sustituir el wildcard por un patrón específico de los previews del proyecto:
+**Resuelto (comodín de Vercel).** La validación se extrajo a [cors-origin.ts](../src/shared-kernel/presentation/http/cors-origin.ts) (`isOriginAllowed`), que [main.ts](../src/main.ts) usa en el callback de `enableCors`. El comodín se sustituyó por un patrón anclado al proyecto **y** al team de Vercel:
 
 ```ts
-const VERCEL_PREVIEW = /^https:\/\/inmuebles-el-guarzo-frontend-[a-z0-9-]+\.vercel\.app$/;
-const isAllowed = !origin
-  ? false  // decidir: ¿de verdad hace falta permitir sin Origin?
-  : allowedOrigins.includes(origin) || VERCEL_PREVIEW.test(origin);
+const VERCEL_PREVIEW_ORIGIN =
+  /^https:\/\/inmuebles-el-guarzo-frontend-[a-z0-9-]+-inmuebles-el-guarzo\.vercel\.app$/;
 ```
+
+- El sufijo del team es imprescindible: en Vercel el nombre de proyecto es único por team, no global, así que el patrón que se propuso originalmente en esta auditoría (sin team) lo satisface cualquiera que cree un proyecto `inmuebles-el-guarzo-frontend` en su propio team.
+- `CORS_ALLOWED_ORIGINS`, `credentials`, `methods` y `allowedHeaders` no cambian.
+- Cubierto por [cors-origin.spec.ts](../src/shared-kernel/presentation/http/cors-origin.spec.ts): lista permitida, previews del team (deployment y rama) y rechazos (`atacante.vercel.app`, mismo proyecto en otro team, sufijo/prefijo añadido, `http://`, origen desconocido).
+
+**Pendiente.**
+- **Decidir `!origin`.** Hoy se sigue permitiendo (cubierto por un test de caracterización). Evaluar si algún cliente legítimo llama sin `Origin` antes de rechazarlo.
+- **Riesgo residual del patrón.** No está confirmado que Vercel impida a terceros reservar como dominio de producción un nombre que termine en `-inmuebles-el-guarzo.vercel.app`. La solución totalmente robusta es no depender de `*.vercel.app` (dominio propio para previews o lista explícita).
+- **(verificar en infraestructura)** que el nombre del proyecto y el slug del team en Vercel coinciden con el patrón, y que los previews no se truncan por longitud del subdominio.
 
 ### H-08 — XSS almacenado latente / sanitización incompleta (Medio)
 
@@ -296,7 +298,7 @@ const isAllowed = !origin
 ### H-12 — Helmet y headers (Bajo)
 
 - [main.ts:20](../src/main.ts#L20): `app.use(helmet())` con defaults. Para una API JSON el CSP por defecto (`default-src 'self'`) es aceptable, pero:
-  - rompe Swagger UI si se deja en producción (scripts/estilos inline);
+  - rompería Swagger UI (scripts/estilos inline); hoy no aplica en producción porque Swagger no se registra allí (H-05), pero sí en desarrollo si se endurece el CSP de forma global;
   - no fija `Cross-Origin-Resource-Policy` / `Cross-Origin-Opener-Policy` de forma explícita.
 - Kong revela versión (`Server: kong/3.9`, `Via`) y hay un `X-Powered-By: Kong-Gateway` añadido a propósito ([kong.yml:37-42](../kong/kong.yml#L37-L42)).
 
@@ -352,14 +354,14 @@ El esquema define `notification_outbox` para entrega confiable ([schema.prisma:7
 1. **(H-01)** Confirmar en Render que el backend es **Private Service** sin dominio público. Si tiene URL pública, quitarla.
 2. **(H-01)** Configurar Cloudflare → origen (Kong) con Authenticated Origin Pull o allowlist de IPs de Cloudflare.
 3. **(H-04)** ~~Turnstile fail-**closed**~~ (hecho: sin bypass en ningún entorno) + enviar `remoteip` + validar `hostname`/`action`.
-4. **(H-05)** Deshabilitar Swagger en producción.
+4. **(H-05)** ~~Deshabilitar Swagger en producción.~~ (hecho en PR #83)
 5. **(H-09)** Quitar el `sed` del `entrypoint.sh`, usar `${{ env "KONG_SECRET" }}` en `kong.yml`.
 
 ### Siguiente iteración (endurecimiento)
 
 6. **(H-02/H-03)** Rate limiting de Kong: `limit_by: header` + `CF-Connecting-IP`, `KONG_TRUSTED_IPS`/`KONG_REAL_IP_HEADER`, y ruta dedicada con límite estricto para `POST /api/v1/publications`.
 7. **(H-06)** `timingSafeEqual` en `KongGatewayGuard` + normalizar header a `string`.
-8. **(H-07)** CORS: regex de preview de Vercel en lugar del wildcard; revisar `!origin` + `credentials`.
+8. **(H-07)** CORS: ~~regex de preview de Vercel en lugar del wildcard~~ (hecho: anclado a proyecto y team); revisar `!origin` + `credentials`.
 9. **(H-11)** `trust proxy` + leer `CF-Connecting-IP` para `consentIp`/`submittedFromIp`.
 10. **(H-08)** Sanitizar `ownerFullName`, `proposedLocation` (y `ContactMessage`); quitar `escapeValue: false` global de i18next.
 11. **(H-10)** Filtro catch-all + mensajes genéricos al cliente; quitar nombres de columnas de los errores `P2002`.
