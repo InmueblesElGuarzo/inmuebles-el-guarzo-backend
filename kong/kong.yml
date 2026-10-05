@@ -4,6 +4,11 @@ _transform: true
 services:
   - name: inmuebles-el-guarzo-backend
     url: https://inmuebles-el-guarzo-backend-a1zk.onrender.com
+    # Render Free tarda 40-70 s en despertar el backend; el default de Kong (60 s)
+    # cortaba antes de que respondiera
+    connect_timeout: 120000
+    read_timeout: 120000
+    write_timeout: 120000
     routes:
       # Solo el POST de creación: anclado y sin distinguir mayúsculas ni barra
       # final (como Express), para no capturar :id/approve|start-review|reject
