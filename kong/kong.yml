@@ -52,23 +52,25 @@ services:
           generator: uuid
           echo_downstream: true
 
-  # Health check de Render: llega directo a Kong, sin Cloudflare ni X-Origin-Verify.
-  # Servicio aparte para no heredar key-auth, rate-limiting ni request-transformer
-  # (el backend exime /api/v1/health de su guard). Misma url que el servicio
-  # principal: si cambia, cambiar ambas.
-  # En plan Free se reenvía al backend a propósito: estos health checks son lo que
-  # despierta al backend cuando despierta Kong. Al pasar a un plan sin cold start,
-  # reemplazar el servicio por una ruta con request-termination (status_code 200)
-  # para que el health de Kong mida solo a Kong.
+# Health check de Render: llega directo a Kong, sin Cloudflare ni X-Origin-Verify.
+# Ruta sin servicio: Kong responde él mismo y no hereda key-auth ni rate-limiting.
+# No se reenvía al backend: en plan Free, Render no despierta un servicio dormido
+# por peticiones que salen de otro servicio de Render (Kong recibe un 502 inmediato),
+# así que un health reenviado deja a Kong unhealthy y sin recibir tráfico. El backend
+# lo despierta el frontend con una petición directa a su /api/v1/health.
+routes:
   - name: render-health-check
-    url: https://inmuebles-el-guarzo-backend-a1zk.onrender.com
-    routes:
-      - name: render-health-check
-        paths:
-          - ~/api/v1/health$
-        methods:
-          - GET
-        strip_path: false
+    paths:
+      - ~/api/v1/health$
+    methods:
+      - GET
+    strip_path: false
+    plugins:
+      - name: request-termination
+        config:
+          status_code: 200
+          content_type: application/json
+          body: '{"status":"ok"}'
 
 consumers:
   - username: cloudflare-edge
