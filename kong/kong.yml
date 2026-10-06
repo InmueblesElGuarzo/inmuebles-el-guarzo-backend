@@ -4,12 +4,41 @@ _transform: true
 services:
   - name: inmuebles-el-guarzo-backend
     url: https://inmuebles-el-guarzo-backend-a1zk.onrender.com
+    # Render Free tarda 40-70 s en despertar el backend; el default de Kong (60 s)
+    # cortaba antes de que respondiera
+    connect_timeout: 120000
+    read_timeout: 120000
+    write_timeout: 120000
     routes:
+      # Solo el POST de creación: anclado y sin distinguir mayúsculas ni barra
+      # final (como Express), para no capturar :id/approve|start-review|reject
+      - name: public-publication-submit
+        paths:
+          - ~/(?i)api/v1/publications/?$
+        methods:
+          - POST
+        strip_path: false
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 5
+              hour: 30
+              policy: local
+              limit_by: header
+              header_name: CF-Connecting-IP
       - name: all-routes
         paths:
           - /
         strip_path: false
     plugins:
+      - name: key-auth
+        config:
+          key_names:
+            - X-Origin-Verify
+          key_in_header: true
+          key_in_query: false
+          key_in_body: false
+          hide_credentials: true
       - name: request-transformer
         config:
           add:
@@ -20,18 +49,38 @@ services:
           minute: 60
           hour: 1000
           policy: local
-          redis:
-            host: localhost
-            port: 6379
-            timeout: 2000
-            database: 0
-            ssl: false
-            ssl_verify: false
+          limit_by: header
+          header_name: CF-Connecting-IP
       - name: correlation-id
         config:
           header_name: X-Correlation-ID
           generator: uuid
           echo_downstream: true
+
+# Health check de Render: llega directo a Kong, sin Cloudflare ni X-Origin-Verify.
+# Ruta sin servicio: Kong responde él mismo y no hereda key-auth ni rate-limiting.
+# No se reenvía al backend: en plan Free, Render no despierta un servicio dormido
+# por peticiones que salen de otro servicio de Render (Kong recibe un 502 inmediato),
+# así que un health reenviado deja a Kong unhealthy y sin recibir tráfico. El backend
+# lo despierta el frontend con una petición directa a su /api/v1/health.
+routes:
+  - name: render-health-check
+    paths:
+      - ~/api/v1/health$
+    methods:
+      - GET
+    strip_path: false
+    plugins:
+      - name: request-termination
+        config:
+          status_code: 200
+          content_type: application/json
+          body: '{"status":"ok"}'
+
+consumers:
+  - username: cloudflare-edge
+    keyauth_credentials:
+      - key: 'ORIGIN_VERIFY_PLACEHOLDER'
 
 plugins:
   - name: response-transformer
