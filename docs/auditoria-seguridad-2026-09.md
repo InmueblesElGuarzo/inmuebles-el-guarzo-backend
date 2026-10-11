@@ -21,7 +21,7 @@
 | H-08 | XSS almacenado latente: `ownerFullName` y `proposedLocation` no se sanitizan; plantillas de email con `escapeValue: false`                                                                                                                                                                                                                                                                                                                                                                                      | **Medio**                            | XSS                    |
 | H-09 | `entrypoint.sh` inyecta `KONG_SECRET` con `sed` sin escapar → rompe o corrompe la config si el secreto tiene `/ & \n`                                                                                                                                                                                                                                                                                                                                                                                           | **Medio**                            | Gateway / build        |
 | H-10 | Fuga de detalle interno en respuestas de error (nombres de columnas de BD en `P2002`; motivo interno de rechazo del JWT en `IAM.INVALID_AUTH_TOKEN`)                                                                                                                                                                                                                                                                                                                                                            | **Bajo**                             | Info disclosure        |
-| H-11 | Sin `trust proxy` en Express → `req.ip` guarda la IP del proxy, no la del cliente (afecta trazabilidad Ley 1581 y cualquier rate limit por IP)                                                                                                                                                                                                                                                                                                                                                                  | **Bajo-Medio**                       | Trazabilidad           |
+| H-11 | Sin `trust proxy` en Express → `req.ip` guarda la IP del proxy, no la del cliente (afecta trazabilidad Ley 1581 y cualquier rate limit por IP). **Resuelto:** `submittedFromIp` y `consentIp` se toman de `CF-Connecting-IP` validada, sin `trust proxy`                                                                                                                                                                                                                                                        | **Bajo-Medio**                       | Trazabilidad           |
 | H-12 | Helmet sin configurar (CSP por defecto, sin `Cross-Origin-Resource-Policy` explícito, headers de versión de Kong visibles)                                                                                                                                                                                                                                                                                                                                                                                      | **Bajo**                             | Headers                |
 | H-13 | Rate limiting a nivel de aplicación inexistente pese a estar listado como restricción de seguridad (README §3.6) y tener Redis conectado                                                                                                                                                                                                                                                                                                                                                                        | **Medio**                            | Defensa en profundidad |
 | H-14 | Condiciones de carrera: dedup por hash (TOCTOU) y `nextReferenceNumber` (count+1) permiten duplicados bajo concurrencia                                                                                                                                                                                                                                                                                                                                                                                         | **Bajo**                             | Integridad             |
@@ -182,7 +182,7 @@ La rama era inalcanzable porque `TURNSTILE_SECRET_KEY` es `@IsNotEmpty()` en `En
 
 **Pendiente.** No se envía `remoteip` ni se validan los campos `hostname` / `action` de la respuesta de Cloudflare ([turnstile-captcha-verifier.adapter.ts:40-58](../src/modules/publications/infrastructure/captcha/turnstile-captcha-verifier.adapter.ts#L40-L58)). Un token válido obtenido en otro sitio del mismo dominio se puede reutilizar. Estos puntos dependen de la IP real del cliente (H-11) y del frontend, y se abordarán después:
 
-- Añadir `remoteip` (la IP real del cliente) al cuerpo de `siteverify`.
+- Añadir `remoteip` (la IP real del cliente, ya disponible con `@ClientIp()`, H-11) al cuerpo de `siteverify`.
 - Validar `data.hostname` contra el dominio esperado y `data.action` contra un valor fijo (`'publication_submit'`) que el frontend setea en el widget.
 - Validar el timestamp (`challenge_ts`) para rechazar tokens viejos.
 - Devolver `data.success === true` en lugar de `data.success`: si Cloudflare responde un JSON sin `success`, hoy se devuelve `undefined`. El interactor lo rechaza igual por ser falsy, pero el tipo `boolean` no es fiel.
@@ -273,14 +273,23 @@ const VERCEL_PREVIEW_ORIGIN =
 - Añadir un `AllExceptionsFilter` catch-all que unifique el shape y, en producción, oculte `message` para 5xx (`"Error interno"`).
 - Revisar que `body.message` de `DomainExceptionFilter` sea apto para el usuario final o quitarlo del body (el frontend ya usa `code` con i18n).
 
-### H-11 — Sin `trust proxy` (Bajo-Medio)
+### H-11 — Sin `trust proxy` (Bajo-Medio) — resuelto
 
-[main.ts](../src/main.ts) nunca llama `app.set('trust proxy', ...)`. Detrás de Cloudflare + Render + Kong, `req.ip` y `req.socket.remoteAddress` son de infraestructura. Impacto:
+**Hallazgo original.** [main.ts](../src/main.ts) nunca llama `app.set('trust proxy', ...)`. Detrás de Cloudflare + Render + Kong, `req.ip` y `req.socket.remoteAddress` son de infraestructura. Impacto:
 
-- `submittedFromIp` se toma de `req.ip` ([publications.controller.ts:119](../src/modules/publications/presentation/http/controllers/publications.controller.ts#L119)) y, junto con `consentIp`, se guarda como **evidencia de consentimiento (Ley 1581)** ([submit-publication-request.interactor.ts:116-133](../src/modules/publications/application/use-cases/submit-publication-request/submit-publication-request.interactor.ts#L116-L133)). Es la IP del proxy, no la del titular. Evidencia legal débil.
+- `submittedFromIp` se tomaba de `req.ip` en el controlador y, junto con `consentIp`, se guarda como **evidencia de consentimiento (Ley 1581)** ([submit-publication-request.interactor.ts:116-133](../src/modules/publications/application/use-cases/submit-publication-request/submit-publication-request.interactor.ts#L116-L133)). Era la IP del proxy, no la del titular. Evidencia legal débil.
 - Cualquier rate limiting/auditoría por IP a nivel de app agruparía todo bajo una IP.
 
-**Acción:** `app.set('trust proxy', 1)` (o el número de proxies) y leer la IP del header que corresponda. Como Cloudflare está delante, `CF-Connecting-IP` es la fuente fiable; extraerla explícitamente en el controlador en lugar de `req.ip`.
+La acción propuesta era `app.set('trust proxy', N)` y leer la IP del header que corresponda.
+
+**Resuelto.** La IP se lee de `CF-Connecting-IP`, sin `trust proxy`:
+
+- **Por qué no `trust proxy`.** `X-Forwarded-For` es una lista que el cliente puede falsificar: con `trust proxy true`, `req.ip` toma el valor que puso el cliente, y con `N` saltos depende de una cadena que cambia con la arquitectura. `CF-Connecting-IP` es un valor único que pone Cloudflare.
+- [client-ip.ts](../src/shared-kernel/presentation/http/client-ip.ts) (`resolveClientIp`, función pura): usa el header solo si es un único `string` que, recortado, es una IPv4 o IPv6 según `net.isIP`, sin zone ID (`%`) y de 45 caracteres como máximo (el tamaño de `submitted_from_ip` y `consent_ip`). Si no, usa `req.ip` con la misma validación; si tampoco es válida, guarda `null`.
+- El decorador [`@ClientIp()`](../src/shared-kernel/presentation/http/decorators/client-ip.decorator.ts) la aplica a la petición, y [publications.controller.ts:116](../src/modules/publications/presentation/http/controllers/publications.controller.ts#L116) lo usa en lugar de `req.ip`. Se confía en el header porque solo llegan al backend las peticiones que pasaron `key-auth` (`X-Origin-Verify`, que solo inyecta Cloudflare) y `KongGatewayGuard` (H-01).
+- Cubierto por [client-ip.spec.ts](../src/shared-kernel/presentation/http/client-ip.spec.ts) y [client-ip.decorator.spec.ts](../src/shared-kernel/presentation/http/decorators/client-ip.decorator.spec.ts): IPv4, IPv6, espacios, header duplicado, vacío, lista con comas, basura/inyección, zone ID, 46 caracteres, header larguísimo, ausente, fallback inválido e `X-Forwarded-For` ignorado.
+
+**Nota.** Los registros anteriores a este cambio tienen la IP del proxy en `submitted_from_ip` y `consent_ip`; no se migran (no hay forma de recuperar la IP real). La IP no se añade a los logs.
 
 ### H-12 — Helmet y headers (Bajo)
 
@@ -351,7 +360,7 @@ El esquema define `notification_outbox` para entrega confiable ([schema.prisma:7
 6. **(H-02/H-03)** ~~Rate limiting de Kong: `limit_by: header` + `CF-Connecting-IP` y ruta dedicada con límite estricto para `POST /api/v1/publications`.~~ (hecho: 5/min y 30/h para el formulario; se descartó `KONG_TRUSTED_IPS`/`KONG_REAL_IP_HEADER`, ver A.2).
 7. **(H-06)** ~~`timingSafeEqual` en `KongGatewayGuard` + normalizar header a `string`.~~ (hecho)
 8. **(H-07)** CORS: ~~regex de preview de Vercel en lugar del wildcard~~ (hecho en PR #87: anclado a proyecto y team); revisar `!origin` + `credentials`.
-9. **(H-11)** `trust proxy` + leer `CF-Connecting-IP` para `consentIp`/`submittedFromIp`.
+9. **(H-11)** ~~`trust proxy` + leer `CF-Connecting-IP` para `consentIp`/`submittedFromIp`.~~ (hecho: `CF-Connecting-IP` validada, sin `trust proxy`).
 10. **(H-08)** Sanitizar `ownerFullName`, `proposedLocation` (y `ContactMessage`); quitar `escapeValue: false` global de i18next.
 11. **(H-10)** Filtro catch-all + mensajes genéricos al cliente; quitar nombres de columnas de los errores `P2002` y el motivo interno de `IAM.INVALID_AUTH_TOKEN`.
 12. **(H-13)** Rate limiting a nivel de app con `@upstash/ratelimit` sobre endpoints públicos (defensa en profundidad).
