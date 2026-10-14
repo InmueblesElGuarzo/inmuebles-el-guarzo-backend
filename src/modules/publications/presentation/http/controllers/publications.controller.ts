@@ -22,6 +22,7 @@ import type { Request } from 'express';
 
 import { UPSTASH_REDIS } from '../../../../../shared-kernel/infrastructure/cache/cache.module';
 import { Public } from '../../../../../shared-kernel/presentation/decorators/public.decorator';
+import { ClientIp } from '../../../../../shared-kernel/presentation/http/decorators/client-ip.decorator';
 import { AuthenticatedUser } from '../../../../iam/application/ports/output/identity-provider.port';
 import { CurrentUser } from '../../../../iam/presentation/http/decorators/current-user.decorator';
 
@@ -111,12 +112,14 @@ export class PublicationsController {
   public async submit(
     @Body() dto: SubmitPublicationRequestHttpDto,
     @Req() req: Request,
+    // CF-Connecting-IP es confiable: solo llega lo que pasó key-auth (X-Origin-Verify, que solo inyecta Cloudflare) y KongGatewayGuard
+    @ClientIp() clientIp: string | undefined,
   ): Promise<SubmitPublicationRequestHttpResponse> {
     const ua = req.headers['user-agent'];
     const submittedFromUserAgent: string | undefined = typeof ua === 'string' ? ua : undefined;
     const result = await this.submitInteractor.execute({
       ...dto,
-      submittedFromIp: req.ip,
+      submittedFromIp: clientIp,
       submittedFromUserAgent,
     });
     if (result.isFailure) {
