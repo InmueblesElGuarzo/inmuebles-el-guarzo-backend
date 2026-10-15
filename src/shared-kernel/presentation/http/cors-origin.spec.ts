@@ -11,7 +11,7 @@ describe('isOriginAllowed', () => {
     expect(isOriginAllowed('https://www.inmuebleselguarzo.com.co', ALLOWED_ORIGINS)).toBe(true);
   });
 
-  // Comportamiento heredado, pendiente de decisión (H-07).
+  // Decisión de H-07: CORS lo aplica el navegador, no es control de acceso.
   it('should allow requests without Origin header', () => {
     expect(isOriginAllowed(undefined, ALLOWED_ORIGINS)).toBe(true);
   });

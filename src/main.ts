@@ -10,7 +10,10 @@ import { AppModule } from './app.module';
 import { EnvSchema } from './shared-kernel/infrastructure/config/env.schema';
 import { DomainExceptionFilter } from './shared-kernel/presentation/filters/domain-exception.filter';
 import { PrismaExceptionFilter } from './shared-kernel/presentation/filters/prisma-exception.filter';
-import { isOriginAllowed } from './shared-kernel/presentation/http/cors-origin';
+import {
+  createCorsOptions,
+  createCorsRejectionLogger,
+} from './shared-kernel/presentation/http/cors-options';
 import { setupSwagger } from './shared-kernel/presentation/http/swagger.setup';
 
 async function bootstrap(): Promise<void> {
@@ -29,21 +32,7 @@ async function bootstrap(): Promise<void> {
     .map((origin) => origin.trim())
     .filter((origin) => origin.length > 0);
 
-  app.enableCors({
-    origin: (
-      origin: string | undefined,
-      callback: (err: Error | null, allow?: boolean) => void,
-    ) => {
-      if (isOriginAllowed(origin, allowedOrigins)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
-  });
+  app.enableCors(createCorsOptions(allowedOrigins, createCorsRejectionLogger(app.get(Logger))));
 
   app.useGlobalPipes(
     new ValidationPipe({
