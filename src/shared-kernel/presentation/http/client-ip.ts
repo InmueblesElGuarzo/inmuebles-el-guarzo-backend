@@ -2,14 +2,16 @@
  * resolveClientIp — IP del visitante para la evidencia de consentimiento
  * (Ley 1581): `submittedFromIp` y `consentIp`.
  *
- * Usa `CF-Connecting-IP`, un valor único que pone Cloudflare. No se usa
- * `X-Forwarded-For` (vía `trust proxy`): es una lista que el cliente puede
- * falsificar (H-11 de docs/auditoria-seguridad-2026-09.md).
+ * Usa `X-Original-Client-IP`, que Kong rellena con `CF-Connecting-IP` tras
+ * borrar el que mande el cliente. No se lee `CF-Connecting-IP` directamente:
+ * entre Kong y el backend hay un borde de Cloudflare que lo reescribe. Tampoco
+ * se usa `X-Forwarded-For` (vía `trust proxy`): es una lista que el cliente
+ * puede falsificar (H-11 de docs/auditoria-seguridad-2026-09.md).
  *
- * Un valor solo se acepta si, recortado, es una IPv4 o IPv6 según `net.isIP`,
- * sin zone ID (`%`) y de 45 caracteres como máximo (el tamaño de las columnas).
- * Si el header no es válido se usa `fallbackIp` con la misma validación; si
- * tampoco lo es, devuelve `undefined`.
+ * El valor solo se acepta si es un único string que, recortado, es una IPv4 o
+ * IPv6 según `net.isIP`, sin zone ID (`%`) y de 45 caracteres como máximo (el
+ * tamaño de las columnas). En cualquier otro caso devuelve `undefined` y se
+ * guarda `null`: sin fallback a `req.ip`, que sería la IP de un proxy.
  *
  * → CAPA: Frameworks & Drivers (Uncle Bob).
  */
@@ -18,24 +20,17 @@ import { isIP } from 'node:net';
 
 const MAX_IP_LENGTH = 45;
 
-function toValidIp(value: string | undefined): string | undefined {
-  if (value === undefined) {
+export function resolveClientIp(
+  originalClientIp: string | string[] | undefined,
+): string | undefined {
+  if (typeof originalClientIp !== 'string') {
     return undefined;
   }
 
-  const trimmed = value.trim();
+  const trimmed = originalClientIp.trim();
   if (trimmed.length > MAX_IP_LENGTH || trimmed.includes('%') || isIP(trimmed) === 0) {
     return undefined;
   }
 
   return trimmed;
-}
-
-export function resolveClientIp(
-  cfConnectingIp: string | string[] | undefined,
-  fallbackIp: string | undefined,
-): string | undefined {
-  const fromHeader = typeof cfConnectingIp === 'string' ? toValidIp(cfConnectingIp) : undefined;
-
-  return fromHeader ?? toValidIp(fallbackIp);
 }
