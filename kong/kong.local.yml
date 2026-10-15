@@ -12,6 +12,10 @@ services:
     plugins:
       - name: request-transformer
         config:
+          # Kong aplica remove antes que add: descarta el X-Kong-Secret del cliente
+          remove:
+            headers:
+              - X-Kong-Secret
           add:
             headers:
               - X-Kong-Secret:KONG_SECRET_PLACEHOLDER
