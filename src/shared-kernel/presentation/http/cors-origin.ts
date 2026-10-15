@@ -2,8 +2,11 @@
  * isOriginAllowed — Decide si un origen puede llamar a la API vía CORS.
  *
  * Se permite:
- *  - Peticiones sin header `Origin` (curl, server-to-server). Comportamiento
- *    heredado, pendiente de decisión (H-07 de docs/auditoria-seguridad-2026-09.md).
+ *  - Peticiones sin header `Origin` (curl, server-to-server). CORS lo aplica el
+ *    navegador; un cliente que no es navegador puede omitir o falsificar
+ *    `Origin`, así que rechazarlas no protege nada. La protección real es
+ *    key-auth en Kong + `KongGatewayGuard` + JWT (H-07 de
+ *    docs/auditoria-seguridad-2026-09.md).
  *  - Orígenes listados en `CORS_ALLOWED_ORIGINS`.
  *  - Previews de Vercel del frontend, solo del team del negocio.
  *
