@@ -41,13 +41,16 @@ services:
           hide_credentials: true
       - name: request-transformer
         config:
-          # Kong aplica remove antes que add: descarta el X-Kong-Secret del cliente
+          # Kong aplica remove antes que add: descarta los valores que mande el cliente
           remove:
             headers:
               - X-Kong-Secret
+              - X-Original-Client-IP
           add:
             headers:
               - X-Kong-Secret:KONG_SECRET_PLACEHOLDER
+              # IP del visitante para el backend: copia de CF-Connecting-IP (vacío si no viene)
+              - 'X-Original-Client-IP:$(headers["cf-connecting-ip"])'
       - name: rate-limiting
         config:
           minute: 60

@@ -25,35 +25,42 @@ function buildContext(headers: Record<string, string | string[]>, ip?: string): 
   } as unknown as ExecutionContext;
 }
 
+// request.ip válido en todos los casos: nunca debe usarse
+const REQUEST_IP = '10.0.0.1';
+
 describe('ClientIp decorator', () => {
   const factory = getClientIpFactory();
 
-  it('should return CF-Connecting-IP when it is a valid IP', () => {
-    const ctx = buildContext({ 'cf-connecting-ip': '1.2.3.4' }, '10.0.0.1');
+  it('should return X-Original-Client-IP when it is a valid IP', () => {
+    const ctx = buildContext({ 'x-original-client-ip': '1.2.3.4' }, REQUEST_IP);
 
     expect(factory(undefined, ctx)).toBe('1.2.3.4');
   });
 
-  it('should fall back to request.ip when CF-Connecting-IP is missing', () => {
-    const ctx = buildContext({}, '10.0.0.1');
+  it('should return undefined when X-Original-Client-IP is missing', () => {
+    const ctx = buildContext({}, REQUEST_IP);
 
-    expect(factory(undefined, ctx)).toBe('10.0.0.1');
+    expect(factory(undefined, ctx)).toBeUndefined();
   });
 
-  it('should fall back to request.ip when CF-Connecting-IP is invalid', () => {
-    const ctx = buildContext({ 'cf-connecting-ip': '1.2.3.4, 5.6.7.8' }, '10.0.0.1');
+  // Kong lo envía vacío cuando la petición no trae CF-Connecting-IP
+  it('should return undefined when X-Original-Client-IP is empty', () => {
+    const ctx = buildContext({ 'x-original-client-ip': '' }, REQUEST_IP);
 
-    expect(factory(undefined, ctx)).toBe('10.0.0.1');
+    expect(factory(undefined, ctx)).toBeUndefined();
   });
 
-  it('should ignore X-Forwarded-For', () => {
-    const ctx = buildContext({ 'x-forwarded-for': '9.9.9.9' }, '10.0.0.1');
+  it('should return undefined when X-Original-Client-IP is invalid', () => {
+    const ctx = buildContext({ 'x-original-client-ip': '1.2.3.4, 5.6.7.8' }, REQUEST_IP);
 
-    expect(factory(undefined, ctx)).toBe('10.0.0.1');
+    expect(factory(undefined, ctx)).toBeUndefined();
   });
 
-  it('should return undefined when neither the header nor request.ip are valid', () => {
-    const ctx = buildContext({});
+  it.each([
+    ['CF-Connecting-IP', 'cf-connecting-ip'],
+    ['X-Forwarded-For', 'x-forwarded-for'],
+  ])('should ignore %s', (_label, header) => {
+    const ctx = buildContext({ [header]: '9.9.9.9' }, REQUEST_IP);
 
     expect(factory(undefined, ctx)).toBeUndefined();
   });

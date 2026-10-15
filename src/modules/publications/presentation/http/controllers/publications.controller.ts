@@ -112,7 +112,7 @@ export class PublicationsController {
   public async submit(
     @Body() dto: SubmitPublicationRequestHttpDto,
     @Req() req: Request,
-    // CF-Connecting-IP es confiable: solo llega lo que pasó key-auth (X-Origin-Verify, que solo inyecta Cloudflare) y KongGatewayGuard
+    // X-Original-Client-IP lo pone Kong tras borrar el del cliente, y solo llega lo que pasó KongGatewayGuard
     @ClientIp() clientIp: string | undefined,
   ): Promise<SubmitPublicationRequestHttpResponse> {
     const ua = req.headers['user-agent'];
