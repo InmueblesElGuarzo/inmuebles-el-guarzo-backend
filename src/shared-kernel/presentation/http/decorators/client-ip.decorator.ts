@@ -1,6 +1,7 @@
 /**
  * @ClientIp() — Parameter decorator que inyecta la IP del visitante resuelta
- * por `resolveClientIp`: `CF-Connecting-IP` si es válida, si no `request.ip`.
+ * por `resolveClientIp` desde `X-Original-Client-IP` (lo pone Kong), o
+ * `undefined` si el header falta o no es válido.
  *
  * Uso:
  *   @Post()
@@ -17,6 +18,6 @@ import { resolveClientIp } from '../client-ip';
 export const ClientIp = createParamDecorator(
   (_data: unknown, ctx: ExecutionContext): string | undefined => {
     const request = ctx.switchToHttp().getRequest<Request>();
-    return resolveClientIp(request.headers['cf-connecting-ip'], request.ip);
+    return resolveClientIp(request.headers['x-original-client-ip']);
   },
 );
